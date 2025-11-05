@@ -1,4 +1,3 @@
-// src/pages/ReportInput.tsx
 import { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
 import {
@@ -9,22 +8,27 @@ import {
   AlertTriangle,
   Home,
   Building,
+  User,
+  Mail,
+  Phone,
+  Zap, // Ícone para "Botões de Pânico"
 } from "lucide-react";
 import SuccessModal from "../components/emergency/SuccessModal";
+import ClinicSelectModal from "../components/emergency/ClinicSelectModal";
 import { useEmergencyReport } from "../hooks";
-import { EmergencyForm, URGENCIAS } from "../types/emergency.types";
+import { EmergencyForm, URGENCIAS, Clinica } from "../types/emergency.types";
 
 export default function ReportInput() {
-  // ÚNICA LÓGICA MANTIDA AQUI: Gerenciar o Token
+  const [showClinicModal, setShowClinicModal] = useState(false);
+  const [selectedClinic, setSelectedClinic] = useState<any>(null);
+
   const [token, setToken] = useState<string | null>(null);
   useEffect(() => {
     const t = localStorage.getItem("token");
     setToken(t);
   }, []);
 
-  // CHAMA O HOOK PRINCIPAL
   const {
-    // Estados
     formData,
     textInput,
     visitaTipo,
@@ -40,8 +44,6 @@ export default function ReportInput() {
     isRecording,
     isTranscribing,
     transcribedText,
-    
-    // Setters e Handlers
     setFormData,
     setTextInput,
     setVisitaTipo,
@@ -51,9 +53,39 @@ export default function ReportInput() {
     analyzeTextWithAI,
     handleSubmit,
     closeModal,
-  } = useEmergencyReport(token); // Passa o token para o hook
+    validateForm,
+  } = useEmergencyReport(token);
 
-  // ==== O JSX PERMANECE EXATAMENTE IGUAL AO SEU ====
+  // Handler para o <form>
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const isValid = validateForm();
+    if (isValid) {
+      setShowClinicModal(true);
+    }
+  };
+
+  // Handler para o Modal
+  const handleClinicSelectAndSubmit = (selectedClinic: Clinica) => {
+    setShowClinicModal(false);
+    handleSubmit(selectedClinic.id);
+  };
+
+  // --- NOVO: Função para pré-preencher sintomas ---
+  const handleQuickReport = (
+    symptom: string,
+    urgency: EmergencyForm["nivel_urgencia"]
+  ) => {
+    setTextInput(symptom);
+    setFormData((p) => ({
+      ...p,
+      descricao_sintomas: symptom,
+      nivel_urgencia: urgency,
+    }));
+    setError(null);
+    document.getElementById("descricaoSintomas")?.focus();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#EAF9F5] via-[#D8F3DC] to-[#C3E5D0] flex flex-col font-sans">
       <Navbar />
@@ -70,42 +102,123 @@ export default function ReportInput() {
           {/* Feedbacks */}
           <div className="space-y-3 mb-4">
             {isRecording && (
-              <div className="feedback-box bg-red-50 border-red-200 text-red-600">
+              <div className="flex items-center gap-2 text-sm p-3 rounded-lg border bg-red-50 border-red-200 text-red-600">
                 <Mic className="w-4 h-4 animate-pulse" /> Gravando...
               </div>
             )}
             {(isTranscribing || (loading && !isRecording)) && (
-              <div className="feedback-box bg-blue-50 border-blue-200 text-blue-600">
+              <div className="flex items-center gap-2 text-sm p-3 rounded-lg border bg-blue-50 border-blue-200 text-blue-600">
                 <Loader2 className="w-4 h-4 animate-spin" /> Processando...
               </div>
             )}
             {locationError && (
-              <div className="feedback-box bg-yellow-100 border-yellow-300 text-yellow-800 items-start">
-                <AlertTriangle className="icon-feedback" />
+              <div className="flex items-start gap-2 text-sm p-3 rounded-lg border bg-yellow-100 border-yellow-300 text-yellow-800">
+                <AlertTriangle className="w-5 h-5 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5 sm:mt-0" />
                 <span>{locationError}</span>
               </div>
             )}
             {error && (
-              <div className="feedback-box bg-red-100 border-red-300 text-red-800 items-start">
-                <AlertTriangle className="icon-feedback" />
+              <div className="flex items-start gap-2 text-sm p-3 rounded-lg border bg-red-100 border-red-300 text-red-800">
+                <AlertTriangle className="w-5 h-5 sm:w-4 sm:h-4 flex-shrink-0 mt-0.5 sm:mt-0" />
                 <span>{error}</span>
               </div>
             )}
-            <style>{`.feedback-box{display:flex;align-items:center;gap:0.5rem;font-size:0.875rem;padding:0.75rem;border-radius:0.5rem;border-width:1px;}.icon-feedback{width:1.25rem;height:1.25rem;flex-shrink:0;margin-top:0.125rem;}@media (min-width:640px){.icon-feedback{width:1rem;height:1rem;margin-top:0;}}`}</style>
           </div>
 
           {/* FORMULÁRIO */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSubmit();
-            }}
-            className="space-y-5"
-          >
+          <form onSubmit={handleFormSubmit} className="space-y-5">
+            {!token && (
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-4">
+                <h3 className="font-semibold text-gray-700">
+                  Seus Dados (para a clínica entrar em contato)
+                </h3>
+                <div>
+                  <label
+                    htmlFor="tutorNome"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Seu Nome:
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+                    <input
+                      type="text"
+                      id="tutorNome"
+                      placeholder="Seu nome completo"
+                      value={formData.tutor_nome || ""}
+                      onChange={(e) =>
+                        setFormData((p) => ({
+                          ...p,
+                          tutor_nome: e.target.value,
+                        }))
+                      }
+                      className="w-full p-2 pl-8 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-offset-0 focus:ring-[#25A18E]/50 focus:border-[#25A18E]"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label
+                      htmlFor="tutorEmail"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Seu E-mail:
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+                      <input
+                        type="email"
+                        id="tutorEmail"
+                        placeholder="seu@email.com"
+                        value={formData.tutor_email || ""}
+                        onChange={(e) =>
+                          setFormData((p) => ({
+                            ...p,
+                            tutor_email: e.target.value,
+                          }))
+                        }
+                        className="w-full p-2 pl-8 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-offset-0 focus:ring-[#25A18E]/50 focus:border-[#25A18E]"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="tutorTelefone"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Seu Telefone:
+                    </label>
+                    <div className="relative">
+                      <Phone className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+                      <input
+                        type="tel"
+                        id="tutorTelefone"
+                        placeholder="(XX) 99999-9999"
+                        value={formData.tutor_telefone || ""}
+                        onChange={(e) =>
+                          setFormData((p) => ({
+                            ...p,
+                            tutor_telefone: e.target.value,
+                          }))
+                        }
+                        className="w-full p-2 pl-8 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-offset-0 focus:ring-[#25A18E]/50 focus:border-[#25A18E]"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Seção Pet e Urgência */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="petSelect" className="label-form">
+                <label
+                  htmlFor="petSelect"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Pet:
                 </label>
                 {token ? (
@@ -121,10 +234,10 @@ export default function ReportInput() {
                         }));
                         setError(null);
                       }}
-                      className="input-form mb-2"
+                      className="w-full p-2 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-offset-0 focus:ring-[#25A18E]/50 focus:border-[#25A18E] mb-2"
                     >
                       <option value="">Selecione pet</option>
-                      {pets.map((pet: any) => ( // (você pode tipar 'pet' aqui se quiser)
+                      {pets.map((pet: any) => (
                         <option key={pet.id} value={pet.id}>
                           {pet.nome}
                         </option>
@@ -142,7 +255,7 @@ export default function ReportInput() {
                         }));
                         setError(null);
                       }}
-                      className="input-form"
+                      className="w-full p-2 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-offset-0 focus:ring-[#25A18E]/50 focus:border-[#25A18E]"
                     />
                   </>
                 ) : (
@@ -152,15 +265,22 @@ export default function ReportInput() {
                     placeholder="Nome do pet"
                     value={formData.nome_pet || ""}
                     onChange={(e) => {
-                      setFormData((p) => ({ ...p, nome_pet: e.target.value }));
+                      setFormData((p) => ({
+                        ...p,
+                        nome_pet: e.target.value,
+                      }));
                       setError(null);
                     }}
-                    className="input-form"
+                    className="w-full p-2 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-offset-0 focus:ring-[#25A18E]/50 focus:border-[#25A18E]"
+                    required
                   />
                 )}
               </div>
               <div>
-                <label htmlFor="urgenciaSelect" className="label-form">
+                <label
+                  htmlFor="urgenciaSelect"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Urgência:
                 </label>
                 <select
@@ -169,11 +289,11 @@ export default function ReportInput() {
                   onChange={(e) =>
                     setFormData((p) => ({
                       ...p,
-                      nivel_urgencia: e.target
-                        .value as EmergencyForm["nivel_urgencia"],
+                      nivel_urgencia:
+                        e.target.value as EmergencyForm["nivel_urgencia"],
                     }))
                   }
-                  className="input-form"
+                  className="w-full p-2 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-offset-0 focus:ring-[#25A18E]/50 focus:border-[#25A18E]"
                 >
                   {URGENCIAS.map((urg) => (
                     <option key={urg} value={urg}>
@@ -186,7 +306,9 @@ export default function ReportInput() {
 
             {/* Seleção de Tipo de Visita */}
             <div>
-              <label className="label-form mb-2">Atendimento:</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Atendimento:
+              </label>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -194,10 +316,10 @@ export default function ReportInput() {
                     setVisitaTipo("clinica");
                     setError(null);
                   }}
-                  className={`button-visita ${
+                  className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all duration-150 text-sm sm:text-base font-medium ${
                     visitaTipo === "clinica"
-                      ? "button-visita-active"
-                      : "button-visita-inactive"
+                      ? "border-[#25A18E] bg-[#EAF9F5] text-[#208B7C] font-semibold ring-2 ring-[#25A18E]/30"
+                      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
                   }`}
                 >
                   <Building size={18} />
@@ -209,30 +331,73 @@ export default function ReportInput() {
                     setVisitaTipo("domicilio");
                     setError(null);
                   }}
-                  className={`button-visita ${
+                  className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 transition-all duration-150 text-sm sm:text-base font-medium ${
                     visitaTipo === "domicilio"
-                      ? "button-visita-active"
-                      : "button-visita-inactive"
+                      ? "border-[#25A18E] bg-[#EAF9F5] text-[#208B7C] font-semibold ring-2 ring-[#25A18E]/30"
+                      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
                   }`}
                 >
                   <Home size={18} />
                   Em Domicílio
                 </button>
               </div>
-              <style>{`.label-form{display:block;font-size:0.875rem;font-weight:500;margin-bottom:0.25rem;color:#4A5568;}.input-form{width:100%;padding:0.5rem;border:1px solid #CBD5E0;border-radius:0.5rem;outline:none;font-size:0.875rem;transition:ring .1s ease-in-out,border-color .1s ease-in-out;}.input-form:focus{ring:2px;ring-offset:0;ring-color:rgba(37,161,142,.5);border-color:#25A18E;}.button-visita{display:flex;align-items:center;justify-content:center;gap:0.5rem;padding:.75rem;border-radius:.5rem;border-width:2px;transition:all .15s ease-in-out;font-size:.875rem;}@media (min-width:640px){.button-visita{font-size:1rem;}}.button-visita-active{border-color:#25A18E;background-color:#EAF9F5;color:#208B7C;font-weight:600;ring:2px;ring-color:rgba(37,161,142,.3);}.button-visita-inactive{border-color:#D1D5DB;background-color:#fff;color:#4B5563;}.button-visita-inactive:hover{background-color:#F9FAFB;border-color:#9CA3AF;}`}</style>
             </div>
 
             {/* Descrição dos Sintomas */}
             <div>
-              <label htmlFor="descricaoSintomas" className="label-form mb-2">
+              <label
+                htmlFor="descricaoSintomas"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Sintomas:
               </label>
+
+              {/* --- NOVOS BOTÕES DE PÂNICO --- */}
+              <div className="flex flex-wrap gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleQuickReport(
+                      "Possível atropelamento, dificuldade para andar e dor.",
+                      "critica"
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-gray-50 text-gray-700 border border-gray-200 rounded-full transition-all hover:bg-gray-200 hover:text-gray-800 hover:-translate-y-0.5 hover:shadow-sm"
+                >
+                  <Zap size={14} /> Atropelamento
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleQuickReport(
+                      "Possível intoxicação ou envenenamento, vômitos e salivação.",
+                      "critica"
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-gray-50 text-gray-700 border border-gray-200 rounded-full transition-all hover:bg-gray-200 hover:text-gray-800 hover:-translate-y-0.5 hover:shadow-sm"
+                >
+                  <Zap size={14} /> Intoxicação
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleQuickReport(
+                      "Convulsão ou tremores fortes, perda de consciência.",
+                      "alta"
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-gray-50 text-gray-700 border border-gray-200 rounded-full transition-all hover:bg-gray-200 hover:text-gray-800 hover:-translate-y-0.5 hover:shadow-sm"
+                >
+                  <Zap size={14} /> Convulsão
+                </button>
+              </div>
+
               <div className="flex flex-wrap gap-3 mb-3">
                 {!isRecording ? (
                   <button
                     type="button"
                     onClick={startRecording}
-                    className="button-action bg-[#25A18E] hover:bg-[#208B7C]"
+                    className="inline-flex items-center gap-2 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium shadow-sm bg-[#25A18E] hover:bg-[#208B7C]"
                   >
                     <Mic size={16} /> Gravar
                   </button>
@@ -240,7 +405,7 @@ export default function ReportInput() {
                   <button
                     type="button"
                     onClick={stopRecording}
-                    className="button-action bg-red-600 hover:bg-red-700"
+                    className="inline-flex items-center gap-2 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium shadow-sm bg-red-600 hover:bg-red-700"
                   >
                     <Square size={16} /> Parar
                   </button>
@@ -248,18 +413,27 @@ export default function ReportInput() {
                 <button
                   type="button"
                   onClick={analyzeTextWithAI}
-                  className="button-action bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-                  disabled={loading || isTranscribing || !textInput.trim()}
+                  className="inline-flex items-center gap-2 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium shadow-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                  disabled={
+                    !token || loading || isTranscribing || !textInput.trim()
+                  }
+                  title={
+                    !token
+                      ? "Faça login para usar a Análise IA"
+                      : "Analisar sintomas com IA"
+                  }
                 >
                   {loading && !isRecording ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <PawPrint size={16} />
                   )}
-                  {loading && !isRecording ? "Analisando..." : "Analisar IA"}
+                  {loading && !isRecording
+                    ? "Analisando..."
+                    : "Analisar IA"}
                 </button>
-                <style>{`.button-action{display:inline-flex;align-items:center;gap:.5rem;color:#fff;padding:.5rem 1rem;border-radius:.5rem;transition:background-color .15s ease-in-out;font-size:.875rem;box-shadow:0 1px 2px 0 rgba(0,0,0,.05);}`}</style>
               </div>
+
               {transcribedText && (
                 <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 mb-3 text-sm">
                   <p className="text-xs text-gray-500 mb-1 font-medium">
@@ -268,6 +442,7 @@ export default function ReportInput() {
                   <p className="text-gray-800">{transcribedText}</p>
                 </div>
               )}
+
               <textarea
                 id="descricaoSintomas"
                 value={textInput}
@@ -280,7 +455,7 @@ export default function ReportInput() {
                   setError(null);
                 }}
                 placeholder="Descreva os sintomas..."
-                className="input-form h-32 resize-y"
+                className="w-full p-2 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-offset-0 focus:ring-[#25A18E]/50 focus:border-[#25A18E] h-32 resize-y"
                 required
               />
             </div>
@@ -296,7 +471,7 @@ export default function ReportInput() {
                   <Loader2 className="w-5 h-5 animate-spin" /> Enviando...
                 </span>
               ) : (
-                "Enviar Relatório"
+                "Procurar Clínica e Enviar"
               )}
             </button>
           </form>
@@ -312,6 +487,17 @@ export default function ReportInput() {
         lastVisitaTipo={lastVisitaTipo}
         userLocation={location}
         onSetError={setError}
+      />
+
+      {/* --- MODAL DE SELEÇÃO DE CLÍNICA --- */}
+      <ClinicSelectModal
+        isOpen={showClinicModal}
+        onClose={() => setShowClinicModal(false)}
+        onSelect={handleClinicSelectAndSubmit}
+        visitaTipo={visitaTipo}
+        userLocation={
+          location ? { lat: location.latitude, lng: location.longitude } : null
+        }
       />
     </div>
   );

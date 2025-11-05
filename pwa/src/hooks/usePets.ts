@@ -15,13 +15,13 @@ export function usePets(token: string | null) {
         })
         .catch((err) => {
           console.error("Erro ao buscar pets:", err);
-          // Você pode querer setar um estado de erro aqui
+          setPets([]); // Evita travamento em caso de erro
         });
     } else {
       console.log("Nenhum token encontrado, não buscará pets.");
+      setPets([]); // ✅ Garante que o array estará definido
     }
-  }, [token]); // Depende do token
+  }, [token]);
 
-  // Expomos 'setPets' para que o 'handleSubmit' possa adicionar um pet novo
   return { pets, setPets };
 }

@@ -38,8 +38,7 @@ Route::middleware('throttle:5,1')->group(function () {
 
 Route::get('/clinicas-publicas', [ClinicaController::class, 'indexPublic']);
 Route::post('/emergencias', [EmergenciaController::class, 'store']);
-Route::get('/emergencias', [EmergenciaController::class, 'store']);Route::middleware('auth:api')->group(function () {
-});
+Route::get('/emergencias', [EmergenciaController::class, 'store']);
 
 // ------------------------
 // ROTAS PROTEGIDAS (JWT)
@@ -48,8 +47,7 @@ Route::middleware('auth:api')->group(function () {
 
     // Emergências
     Route::get('/clinica/emergencias', [EmergenciaController::class, 'porClinica']);
-    Route::patch('/emergencias/{emergencia}/status', [EmergenciaController::class, 'updateStatus']);
-
+    
     // Usuários
     Route::apiResource('usuarios', UsuarioController::class);
 

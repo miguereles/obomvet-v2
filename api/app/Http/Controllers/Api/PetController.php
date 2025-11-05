@@ -34,7 +34,7 @@ class PetController extends Controller
             'tutor_id' => 'required|exists:usuarios,id',
         ]);
 
-        // ✅ Criação segura
+        
         $pet = Pet::create($validated);
         return response()->json($pet, 201);
     }

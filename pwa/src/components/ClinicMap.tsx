@@ -1,200 +1,213 @@
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { useEffect, useState, useMemo } from "react";
-import { Building2, MapPin } from "lucide-react";
-import { motion } from "framer-motion";
+import { useEffect, useMemo, useRef } from "react";
+import { BriefcaseMedical, User } from "lucide-react"; // Ícones trocados
+import ReactDOMServer from "react-dom/server";
+import { AnimatePresence, motion } from "framer-motion"; // Para o popup
 
 // ==========================
-// Ícones customizados com profundidade
+// ÍCONES CUSTOMIZADOS (À PROVA DE FALHAS)
 // ==========================
-function createDivIcon(Icon: React.FC<{ size?: number; color?: string }>, bgColor: string) {
-  const html = `
-    <div style="
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      width:40px;
-      height:40px;
-      border-radius:50%;
-      background-color:${bgColor};
-      box-shadow:0 4px 10px rgba(0,0,0,0.3);
-      transition: transform 0.2s;
-    ">
-      <svg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='white' stroke-width='2'
-        viewBox='0 0 24 24' width='22' height='22'>
-        ${
-          Icon === MapPin
-            ? "<path d='M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0Z'/><circle cx='12' cy='10' r='3'/>"
-            : "<path d='M3 21V8l9-5 9 5v13H3z'/><path d='M9 22V12h6v10'/>"
-        }
-      </svg>
-    </div>`;
-  return L.divIcon({ html, className: "" });
+// Esta função agora injeta o CSS como estilos INLINE. Não depende de CSS externo.
+function createIcon(
+ IconComponent: React.ElementType,
+ bgColor: string,
+ pulse = false
+) {
+ // Renderiza o ícone do Lucide para HTML
+ const iconHtml = ReactDOMServer.renderToStaticMarkup(
+  <IconComponent size={20} color="white" style={{ transform: 'rotate(45deg)' }} />
+ );
+
+ // Define a animação de pulso (se necessário)
+ const pulseStyle = pulse ? `
+  <style>
+   @keyframes pulse-animation {
+    0% { box-shadow: 0 4px 10px rgba(0,0,0,0.4), 0 0 0 0 ${bgColor}99; }
+    70% { box-shadow: 0 4px 10px rgba(0,0,0,0.4), 0 0 0 15px ${bgColor}00; }
+    100% { box-shadow: 0 4px 10px rgba(0,0,0,0.4), 0 0 0 0 ${bgColor}00; }
+   }
+  </style>
+ ` : '';
+
+ // Monta o HTML final do ícone com estilos INLINE
+ const html = `
+  ${pulseStyle}
+  <div style="
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   width: 38px;
+   height: 38px;
+   border-radius: 50% 50% 50% 0;
+   background-color: ${bgColor};
+   box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+   transform: rotate(-45deg);
+   animation: ${pulse ? 'pulse-animation 1.5s infinite' : 'none'};
+   border: 2px solid white;
+  ">
+   ${iconHtml}
+  </div>`;
+
+ return L.divIcon({
+  html: html,
+  className: '', // Classe externa não é mais necessária!
+  iconSize: [40, 40],
+  iconAnchor: [20, 40],
+  popupAnchor: [0, -40],
+ });
 }
 
-const clinicIcon = createDivIcon(Building2, "#25A18E");
-const userIcon = createDivIcon(MapPin, "#FF6B6B");
+// Ícones agora são infalíveis
+const clinicIcon = createIcon(BriefcaseMedical, "#25A18E"); // Verde
+const userIcon = createIcon(User, "#004E64"); // Azul escuro
+const selectedClinicIcon = createIcon(BriefcaseMedical, "#FF6B6B", true); // Vermelho e pulsando
 
 // ==========================
-// Tipos
+// Tipos (conforme a ClinicPage)
 // ==========================
 interface Clinic {
-  id: number;
-  nome_fantasia: string;
-  endereco: string;
-  localizacao: string;
-  telefone_emergencia: string;
+ id: number;
+ nome_fantasia: string;
+ endereco: string;
+ localizacao: string; // "lat,lng"
+ telefone_emergencia: string;
 }
+type UserLocation = [number, number]; // [lat, lng]
 
 interface ClinicMapProps {
-  selectedClinic?: Clinic | null;
-  onHoverClinic?: (clinic: Clinic | null) => void;
+ clinics: Clinic[];
+ userLocation: UserLocation | null;
+ selectedClinic: Clinic | null;
+ hoveredClinic: Clinic | null;
 }
 
 // ==========================
-// Centralizar mapa com animação
+// Componente para Auto-Zoom
 // ==========================
-function MapCenter({ position }: { position: [number, number] }) {
-  const map = useMap();
-  useEffect(() => {
-    if (position) {
-      map.flyTo(position, 15, { animate: true });
-    }
-  }, [position, map]);
-  return null;
+function AutoBounds({ clinics, userLocation }: Omit<ClinicMapProps, "selectedClinic" | "hoveredClinic">) {
+ const map = useMap();
+ useEffect(() => {
+  if (clinics.length === 0 && !userLocation) return;
+
+  const bounds = new L.LatLngBounds();
+  if (userLocation) {
+   bounds.extend(userLocation);
+  }
+  clinics.forEach(c => {
+   const [lat, lng] = c.localizacao.split(",").map(Number) as UserLocation;
+   bounds.extend([lat, lng]);
+  });
+
+  if (bounds.isValid()) {
+   map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 15, duration: 1.0 });
+  }
+ }, [clinics, userLocation, map]);
+
+ return null;
 }
 
 // ==========================
-// Função auxiliar: calcular distância entre coordenadas
+// Componente para Abrir Popups Automaticamente
 // ==========================
-function getDistance([lat1, lon1]: [number, number], [lat2, lon2]: [number, number]) {
-  const R = 6371; // km
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+function AutoPopup({ clinic, hovered }: { clinic: Clinic | null; hovered: boolean }) {
+ const map = useMap();
+ const popupRef = useRef<L.Popup | null>(null);
+
+ useEffect(() => {
+  // Fecha popups antigos
+  if (popupRef.current) {
+   map.closePopup(popupRef.current);
+   popupRef.current = null;
+  }
+
+  if (clinic) {
+   const [lat, lng] = clinic.localizacao.split(",").map(Number) as UserLocation;
+   
+   const popupContent = ReactDOMServer.renderToStaticMarkup(
+    <div className="p-1">
+     <h3 className="font-bold text-[#004E64]">{clinic.nome_fantasia}</h3>
+     <p className="text-sm mt-1">☎️ {clinic.telefone_emergencia}</p>
+    </div>
+   );
+
+   popupRef.current = L.popup({
+    offset: [0, -40], // Ajusta para a nova âncora do ícone
+    closeButton: !hovered,
+    autoClose: !hovered,
+   })
+    .setLatLng([lat, lng])
+    .setContent(popupContent)
+    .openOn(map);
+  }
+ }, [clinic, map, hovered]);
+
+ return null;
 }
 
 // ==========================
-// Componente principal
+// Componente principal do Mapa
 // ==========================
-export default function ClinicMap({ selectedClinic, onHoverClinic }: ClinicMapProps) {
-  const [clinics, setClinics] = useState<Clinic[]>([]);
-  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
-  const [nearestClinic, setNearestClinic] = useState<Clinic | null>(null);
+export default function ClinicMap({
+ clinics,
+ userLocation,
+ selectedClinic,
+ hoveredClinic
+}: ClinicMapProps) {
 
-  // Buscar clínicas
-  useEffect(() => {
-    fetch("http://localhost:8000/api/clinicas-publicas")
-      .then((res) => res.json())
-      .then((data) => setClinics(data))
-      .catch((err) => console.error("Erro ao buscar clínicas:", err));
-  }, []);
+ // Limites para o Brasil
+ const brazilBounds: L.LatLngBoundsLiteral = [
+  [-33.75, -73.98], // Sul-Oeste
+  [5.27, -34.79],  // Norte-Leste
+ ];
 
-  // Localização do usuário
-  useEffect(() => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setUserLocation([pos.coords.latitude, pos.coords.longitude]),
-      (err) => console.warn("Não foi possível pegar localização:", err),
-      { enableHighAccuracy: true }
+ // Prioridade de exibição: Seleção > Hover
+ const activeClinic = selectedClinic || hoveredClinic;
+ const isHover = !!hoveredClinic && !selectedClinic;
+
+ return (
+  <MapContainer
+   center={[-14.2350, -51.9253]} // Centro do Brasil (Fallback)
+   zoom={4}
+   scrollWheelZoom
+   style={{ height: "100%", width: "100%" }}
+   className="rounded-2xl shadow-2xl"
+   maxBounds={brazilBounds} // Limita o mapa ao Brasil
+   minZoom={4}
+  >
+   <TileLayer
+    attribution='© <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
+    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+   />
+
+   <AutoBounds clinics={clinics} userLocation={userLocation} />
+   <AutoPopup clinic={activeClinic} hovered={isHover} />
+
+   {/* Marcador do usuário */}
+   {userLocation && (
+    <Marker position={userLocation} icon={userIcon}>
+    <Popup>
+      <strong>📍 Você está aqui</strong>
+     </Popup>
+    </Marker>
+   )}
+
+   {/* Marcadores das clínicas */}
+   {clinics.map((clinic) => {
+    const [lat, lng] = clinic.localizacao.split(",").map(Number);
+    const isSelected = selectedClinic?.id === clinic.id;
+    return (
+     <Marker
+      key={clinic.id}
+      position={[lat, lng]}
+      icon={isSelected ? selectedClinicIcon : clinicIcon}
+      zIndexOffset={isSelected ? 1000 : 100} // Traz o marcador selecionado para frente
+     >
+      {/* O Popup agora é controlado pelo AutoPopup */}
+     </Marker>
     );
-  }, []);
-
-  // Descobrir clínica mais próxima
-  useEffect(() => {
-    if (userLocation && clinics.length > 0) {
-      let nearest = clinics[0];
-      let nearestDist = Infinity;
-
-      clinics.forEach((c) => {
-        const [lat, lng] = c.localizacao.split(",").map(Number);
-        const dist = getDistance(userLocation, [lat, lng]);
-        if (dist < nearestDist) {
-          nearestDist = dist;
-          nearest = c;
-        }
-      });
-
-      setNearestClinic(nearest);
-      onHoverClinic?.(nearest); // chama hover automático
-    }
-  }, [userLocation, clinics, onHoverClinic]);
-
-  // Centro inicial do mapa
-  const center: [number, number] = useMemo(() => {
-    if (selectedClinic) {
-      return selectedClinic.localizacao.split(",").map(Number) as [number, number];
-    } else if (nearestClinic) {
-      return nearestClinic.localizacao.split(",").map(Number) as [number, number];
-    } else if (userLocation) {
-      return userLocation;
-    }
-    return [-23.5025, -46.6161]; // fallback SP
-  }, [selectedClinic, nearestClinic, userLocation]);
-
-  return (
-    <MapContainer
-      center={center}
-      zoom={13}
-      scrollWheelZoom
-      style={{ height: "85vh", width: "100%" }}
-      className="rounded-3xl shadow-2xl border border-white/20"
-    >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-
-      {/* Centraliza dinamicamente */}
-      {nearestClinic && !selectedClinic && (
-        <MapCenter
-          position={nearestClinic.localizacao.split(",").map(Number) as [number, number]}
-        />
-      )}
-      {selectedClinic && (
-        <MapCenter
-          position={selectedClinic.localizacao.split(",").map(Number) as [number, number]}
-        />
-      )}
-
-      {/* Marcador do usuário */}
-      {userLocation && (
-        <Marker position={userLocation} icon={userIcon}>
-          <Popup>
-            <strong>📍 Você está aqui</strong>
-          </Popup>
-        </Marker>
-      )}
-
-      {/* Marcadores das clínicas */}
-      {clinics.map((clinic) => {
-        const [lat, lng] = clinic.localizacao.split(",").map(Number);
-        return (
-          <Marker
-            key={clinic.id}
-            position={[lat, lng]}
-            icon={clinicIcon}
-            eventHandlers={{
-              mouseover: () => onHoverClinic?.(clinic),
-              mouseout: () => onHoverClinic?.(null),
-            }}
-          >
-            <Popup className="bg-white/95 text-gray-800 rounded-xl p-3 shadow-lg">
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                <h3 className="font-bold text-[#004E64]">{clinic.nome_fantasia}</h3>
-                <p className="text-sm mt-1">{clinic.endereco}</p>
-                <p className="text-sm mt-1">☎️ Emergência: {clinic.telefone_emergencia}</p>
-              </motion.div>
-            </Popup>
-          </Marker>
-        );
-      })}
-    </MapContainer>
-  );
+   })}
+  </MapContainer>
+ );
 }

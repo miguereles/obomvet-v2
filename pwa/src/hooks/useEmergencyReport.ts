@@ -1,4 +1,3 @@
-// src/hooks/useEmergencyReport.ts
 import { useState, useEffect, useCallback } from "react";
 import {
   EmergencyForm,
@@ -17,31 +16,26 @@ import { useGeolocation } from "./useGeolocation";
 import { usePets } from "./usePets";
 import { useAudioRecording } from "./useAudioRecording";
 
-/**
- * Hook para gerenciar toda a lógica da página de Relato de Emergência.
- */
 export function useEmergencyReport(token: string | null) {
-  // --- Estados do Formulário ---
   const [formData, setFormData] = useState<EmergencyForm>({
     descricao_sintomas: "",
     nivel_urgencia: "media",
+    tutor_nome: "",
+    tutor_email: "",
+    tutor_telefone: "",
   });
   const [textInput, setTextInput] = useState("");
   const [visitaTipo, setVisitaTipo] = useState<VisitaTipo | null>(null);
 
-  // --- Estados de Resposta da API ---
   const [aiResponse, setAiResponse] = useState<AutofillResponse | null>(null);
   const [missingFields, setMissingFields] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<string | null>(null);
   const [clinica, setClinica] = useState<Clinica | null>(null);
-
-  // --- Estados do Modal ---
   const [lastVisitaTipo, setLastVisitaTipo] = useState<VisitaTipo | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  // --- Hooks Aninhados ---
   const { location, locationError } = useGeolocation();
   const { pets, setPets } = usePets(token);
   const {
@@ -54,164 +48,165 @@ export function useEmergencyReport(token: string | null) {
     startRecording,
     stopRecording,
   } = useAudioRecording(token);
+const analyzeTextWithAI = useCallback(async () => {
+  if (!token) {
+    setError("Faça login para usar a análise de IA.");
+    return;
+  }
+  if (!textInput.trim()) {
+    setError("Digite ou grave os sintomas antes de analisar.");
+    return;
+  }
 
-  // --- Efeitos Colaterais ---
+  setLoading(true);
+  setError(null);
 
-  // Sincroniza texto transcrito com o input
+  try {
+    const autofillResponse = (await analyzeSymptoms(
+      textInput.trim(),
+      token
+    )) as AutofillResponse;
+
+    setAiResponse(autofillResponse);
+    setMissingFields(autofillResponse.faltando || []);
+
+    const preenchidos = autofillResponse.preenchidos || {};
+    const updates: Partial<EmergencyForm> = {};
+
+    if (preenchidos.descricao_sintomas)
+      updates.descricao_sintomas = preenchidos.descricao_sintomas;
+
+    if (
+      preenchidos.nivel_urgencia &&
+      URGENCIAS.includes(preenchidos.nivel_urgencia)
+    )
+      updates.nivel_urgencia = preenchidos.nivel_urgencia;
+
+    if (Object.keys(updates).length > 0) {
+      setFormData((prev) => ({ ...prev, ...updates }));
+      if (updates.descricao_sintomas) setTextInput(updates.descricao_sintomas);
+    }
+  } catch (err: any) {
+    setError(err.message || "Erro ao conectar à IA.");
+  } finally {
+    setLoading(false);
+  }
+}, [textInput, token]);
+
   useEffect(() => {
     if (transcribedText && textInput !== transcribedText) {
-      console.log("Sincronizando textarea com texto transcrito.");
       setTextInput(transcribedText);
       setFormData((prev) => ({ ...prev, descricao_sintomas: transcribedText }));
     }
   }, [transcribedText, textInput]);
 
-  // Sincroniza erro de áudio com erro principal
   useEffect(() => {
     if (audioError) setError(audioError);
   }, [audioError]);
 
-  // --- Manipuladores de Eventos (Callbacks) ---
-
-  // Analisar Texto com IA
-  const analyzeTextWithAI = useCallback(async () => {
-    if (!textInput.trim()) {
-      setError("Digite/grave sintomas antes.");
-      return;
+  // ✅ NOVA FUNÇÃO DE VALIDAÇÃO
+  const validateForm = useCallback((): boolean => {
+    if (!formData.descricao_sintomas.trim()) {
+      setError("Descreva os sintomas.");
+      return false;
     }
-    if (audioError) setAudioError(null);
-    setError(null);
-    setAiResponse(null);
-    setMissingFields([]);
-    setLoading(true);
-    console.log("Analisando IA:", textInput.trim());
-
-    try {
-      const autofillResponse = (await analyzeSymptoms(
-        textInput.trim(),
-        token
-      )) as AutofillResponse;
-      console.log("Resposta parseada IA:", autofillResponse);
-      setAiResponse(autofillResponse);
-      setMissingFields(autofillResponse.faltando || []);
-
-      const updates: Partial<EmergencyForm> = {};
-      const preenchidos = autofillResponse.preenchidos || {};
-      if (preenchidos.descricao_sintomas)
-        updates.descricao_sintomas = preenchidos.descricao_sintomas;
-      if (
-        preenchidos.nivel_urgencia &&
-        URGENCIAS.includes(preenchidos.nivel_urgencia)
-      )
-        updates.nivel_urgencia = preenchidos.nivel_urgencia;
-
-      const suggestedPetId = String(preenchidos.pet_id || "");
-      const suggestedPetName = preenchidos.nome_pet || "";
-      if (suggestedPetId && pets.some((p: Pet) => String(p.id) === suggestedPetId)) {
-        updates.pet_id = suggestedPetId;
-        updates.nome_pet = "";
-      } else if (suggestedPetName) {
-        updates.nome_pet = suggestedPetName;
-        updates.pet_id = "";
-      }
-
-      if (Object.keys(updates).length > 0) {
-        console.log("Atualizando form IA:", updates);
-        setFormData((prev) => ({ ...prev, ...updates }));
-        if (updates.descricao_sintomas) setTextInput(updates.descricao_sintomas);
-      } else {
-        console.log("Nenhuma atualização IA.");
-      }
-    } catch (err: any) {
-      console.error("Erro analisar IA:", err);
-      setError(err.message || "Erro conexão IA.");
-    } finally {
-      setLoading(false);
+    if (!visitaTipo) {
+      setError("Selecione o tipo de atendimento.");
+      return false;
     }
-  }, [textInput, token, audioError, setAudioError, pets]);
-
-  // Enviar Relatório
-  const handleSubmit = useCallback(async () => {
-    setError(null);
-    // Validações
-    if (!formData.descricao_sintomas.trim()) { setError("Descreva os sintomas."); return; }
-    if (!visitaTipo) { setError("Selecione o tipo de atendimento."); return; }
-    if (!formData.pet_id && !formData.nome_pet?.trim()) { setError("Selecione ou digite o pet."); return; }
-    if (locationError?.startsWith("Obtendo")) { setError("Aguarde obter localização..."); return; }
-    if (visitaTipo === 'domicilio' && !location && !locationError?.includes("negada")) { setError("Localização necessária p/ domicílio."); return; }
-
-    setLoading(true);
-    console.log("Iniciando envio...");
-
-    const currentVisitaTipo = visitaTipo;
-    setLastVisitaTipo(currentVisitaTipo);
-
-    try {
-      let petId: string | null = formData.pet_id || null;
-      if (!petId && formData.nome_pet?.trim() && token) {
-        console.log("Criando pet:", formData.nome_pet.trim());
-        petId = await createPet(formData.nome_pet.trim(), token);
-        console.log("Pet criado ID:", petId);
-        setPets((prev: Pet[]) => [...prev, { id: petId as string, nome: formData.nome_pet!.trim() }]);
-      } else if (formData.pet_id) {
-        petId = formData.pet_id;
-      } else if (formData.nome_pet?.trim() && !token) {
-        throw new Error("Faça login p/ novo pet.");
+    if (!token) {
+      if (!formData.tutor_nome.trim()) {
+        setError("Digite seu nome.");
+        return false;
       }
-      if (!petId) throw new Error("ID pet não definido.");
+      if (!formData.tutor_email.trim()) {
+        setError("Digite seu e-mail.");
+        return false;
+      }
+      if (!formData.tutor_telefone.trim()) {
+        setError("Digite seu telefone.");
+        return false;
+      }
+      if (!formData.nome_pet.trim()) {
+        setError("Digite o nome do pet.");
+        return false;
+      }
+    } else {
+      if (!formData.pet_id && !formData.nome_pet.trim()) {
+        setError("Selecione ou digite o pet.");
+        return false;
+      }
+    }
+    return true;
+  }, [formData, visitaTipo, token]);
 
-      const nivel_urgencia = formData.nivel_urgencia.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      const payload: any = {
-        descricao_sintomas: formData.descricao_sintomas.trim(),
-        nivel_urgencia,
-        pet_id: Number(petId),
-        visita_tipo: currentVisitaTipo,
-        ...(location && {
-          location: { latitude: location.latitude, longitude: location.longitude },
-        }),
-      };
+  const handleSubmit = useCallback(
+    async (clinicId?: number) => {
+      if (!validateForm()) return;
 
-      const data = await submitEmergency(payload, token);
-      console.log("Resp. emergência:", data);
+      setLoading(true);
+      setError(null);
+      setLastVisitaTipo(visitaTipo);
 
-      setReport("Emergência registrada!");
-      if (data.clinica) {
-        const clinicaData = {
-          ...data.clinica,
-          localizacao:
-            typeof data.clinica.localizacao === "string" &&
-            data.clinica.localizacao.includes(",")
-              ? data.clinica.localizacao
-              : undefined,
+      try {
+        const nivel_urgencia = formData.nivel_urgencia
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+
+        const payload: any = {
+          descricao_sintomas: formData.descricao_sintomas.trim(),
+          nivel_urgencia,
+          visita_tipo: visitaTipo,
+          ...(location && {
+            location: { latitude: location.latitude, longitude: location.longitude },
+          }),
         };
-        setClinica(clinicaData);
-      } else {
-        setClinica(null);
-      }
-      setShowSuccessModal(true);
-    } catch (err: any) {
-      console.error("Erro handleSubmit:", err);
-      setError(err.message || "Erro inesperado.");
-    } finally {
-      setLoading(false);
-      console.log("Envio finalizado.");
-    }
-  }, [formData, visitaTipo, location, locationError, token, pets, setPets]);
 
-  // Fechar Modal
+        if (clinicId) payload.clinica_id = clinicId;
+
+        if (token) {
+          if (formData.pet_id) {
+            payload.pet_id = Number(formData.pet_id);
+          } else if (formData.nome_pet.trim()) {
+            const newPetId = await createPet(formData.nome_pet.trim(), token);
+            setPets((prev: Pet[]) => [
+              ...prev,
+              { id: newPetId, nome: formData.nome_pet!.trim() },
+            ]);
+            payload.pet_id = Number(newPetId);
+          }
+        } else {
+          payload.tutor_nome = formData.tutor_nome.trim();
+          payload.tutor_email = formData.tutor_email.trim();
+          payload.tutor_telefone = formData.tutor_telefone.trim();
+          payload.pet_nome = formData.nome_pet.trim();
+        }
+
+        const data = await submitEmergency(payload, token);
+
+        setReport("Emergência registrada!");
+        setClinica(data.clinica || null);
+        setShowSuccessModal(true);
+      } catch (err: any) {
+        setError(err.message || "Erro ao enviar emergência.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [formData, visitaTipo, token, location, setPets, validateForm]
+  );
+
   const closeModal = useCallback(() => {
     setShowSuccessModal(false);
-    console.log("Fechando modal e limpando formulário...");
     setFormData({
-      pet_id: pets.some((p: Pet) => p.id === formData.pet_id)
-        ? formData.pet_id
-        : undefined,
       descricao_sintomas: "",
       nivel_urgencia: "media",
-      nome_pet: "",
+      tutor_nome: "",
+      tutor_email: "",
+      tutor_telefone: "",
     });
     setTextInput("");
-    setTranscribedText("");
     setAiResponse(null);
     setMissingFields([]);
     setVisitaTipo(null);
@@ -219,18 +214,12 @@ export function useEmergencyReport(token: string | null) {
     setReport(null);
     setClinica(null);
     setError(null);
-  }, [pets, formData.pet_id, setTranscribedText]);
+  }, []);
 
-  // --- Retorno do Hook ---
-  // Retorna todos os estados e funções que o JSX precisa
   return {
-    // Estados
     formData,
-    token,
     textInput,
     visitaTipo,
-    aiResponse,
-    missingFields,
     loading,
     error,
     report,
@@ -243,8 +232,6 @@ export function useEmergencyReport(token: string | null) {
     isRecording,
     isTranscribing,
     transcribedText,
-    
-    // Setters e Handlers
     setFormData,
     setTextInput,
     setVisitaTipo,
@@ -254,5 +241,6 @@ export function useEmergencyReport(token: string | null) {
     analyzeTextWithAI,
     handleSubmit,
     closeModal,
+    validateForm, // ✅ agora existe
   };
 }
