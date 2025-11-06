@@ -30,9 +30,11 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # 7. Build/Instalação de Dependências
 # CORREÇÃO: Mudado para 'npm run build'
+# BLOCO CORRIGIDO
 RUN composer install --no-dev --prefer-dist \
-    && npm install \
-    && npm run build
+     && rm -f package-lock.json \
+     && npm install \
+     && npm run build
 
 # 8. Configurar Permissões (o entrypoint.sh cuidará da pasta 'database')
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
