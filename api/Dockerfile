@@ -3,14 +3,17 @@ FROM php:8.2-apache
 
 # 2. Instalar Ferramentas e Extensões
 # Instala extensões PHP, Node.js e NPM
+# ... (in the '2. Instalar Ferramentas e Extensões' section)
 RUN apt-get update && apt-get install -y \
     libzip-dev \
     unzip \
     git \
     nodejs \
     npm \
-    && docker-php-ext-install pdo pdo_mysql opcache \
+    # Adicione a extensão 'sqlite3' e remova o 'pdo_mysql'
+    && docker-php-ext-install pdo pdo_sqlite opcache \ 
     && a2enmod rewrite
+# ...
 
 # 3. Definir o Diretório de Trabalho (onde o código vai)
 WORKDIR /var/www/html/

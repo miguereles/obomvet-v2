@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # 1. SERVIÇO DE BACKEND (API LARAVEL)
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: obomvet_api
+    restart: always
+    ports:
+      - "8000:80" # Mapeia a porta 80 do contêiner para a porta 8000 da sua máquina local
+    volumes:
+      # Monta o volume da API e a pasta 'database'
+      - ./api:/var/www/html
+      # Mantenha o arquivo do banco de dados persistente no volume
+      - ./api/database/database.sqlite:/var/www/html/database/database.sqlite
+    environment:
+      # Configuração para SQLite
+      APP_ENV: local
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /var/www/html/database/database.sqlite # Caminho absoluto dentro do container
+    # O comando de start é controlado pelo entrypoint.sh no Dockerfile
+    # Se você ainda precisa rodar a migração manualmente após o 'up', use:
+    # command: sh -c "php artisan migrate --force && apache2-foreground"
+    # No entanto, o entrypoint.sh é a melhor prática.
+
+  # 2. SERVIÇO DE FRONTEND (PWA VITE)
+  pwa:
+    image: node:20
+    container_name: obomvet_pwa
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./pwa:/app
+    working_dir: /app
+    command: npm run dev
+    depends_on:
+      - api # Depende da API para comunicação de rede
