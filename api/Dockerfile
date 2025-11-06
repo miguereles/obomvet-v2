@@ -2,43 +2,41 @@
 FROM php:8.2-apache
 
 # 2. Instalar Ferramentas e Extensões
-# Instala extensões PHP, Node.js e NPM
-# ... (in the '2. Instalar Ferramentas e Extensões' section)
 RUN apt-get update && apt-get install -y \
     libzip-dev \
     unzip \
     git \
     nodejs \
     npm \
-    # Adicione a extensão 'sqlite3' e remova o 'pdo_mysql'
+    # CORREÇÃO: Instala a extensão pdo_sqlite
     && docker-php-ext-install pdo pdo_sqlite opcache \ 
     && a2enmod rewrite
-# ...
 
-# 3. Definir o Diretório de Trabalho (onde o código vai)
+# 3. Instalar Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+# 4. Definir o Diretório de Trabalho
 WORKDIR /var/www/html/
 
-# 4. Copiar o Código
-# Copia a pasta 'api' (Laravel)
-COPY api /var/www/html/
+# 5. Copiar o Código
+# CORREÇÃO: Copia o conteúdo do diretório atual (api/)
+COPY . /var/www/html/
 
-# 5. Build/Instalação de Dependências
-# Instala PHP, Node e compila assets
+# 6. Copiar o Script de Entrada (Entrypoint)
+COPY entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# 7. Build/Instalação de Dependências
+# CORREÇÃO: Mudado para 'npm run build'
 RUN composer install --no-dev --prefer-dist \
     && npm install \
-    && npm run prod
+    && npm run build
 
-# 6. Rodar Migrações do Banco de Dados (durante o Build)
-# A migração é executada assim que as dependências estiverem prontas.
-# Se a conexão com o DB não estiver disponível durante o build, isso pode falhar.
-# Verifique se suas variáveis de ambiente DB_... estão disponíveis para o Build.
-RUN php artisan migrate --force
-
-# 7. Configurar Permissões
-# Garante que o Apache possa escrever nos logs e cache.
+# 8. Configurar Permissões (o entrypoint.sh cuidará da pasta 'database')
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
     && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
-# 8. Comando de Start (Inicia o Apache, que serve o Laravel)
-# O comando padrão do `php:8.2-apache` é o Apache em foreground.
-CMD ["apache2-foreground"]
+# 9. Define o Entrypoint para rodar migrações e iniciar o servidor
+ENTRYPOINT ["entrypoint.sh"]
+
+# O CMD ["apache2-foreground"] foi movido para o entrypoint.sh
