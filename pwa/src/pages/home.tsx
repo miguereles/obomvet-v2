@@ -2,12 +2,73 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import Navbar from "../components/Navbar";
 import InstallPwaCard from "../components/InstallPwaCard";
-import { AlertTriangle, MapPin } from "lucide-react";
+// ✅ Adicionado LogIn, UserPlus e HeartPulse para os botões do corpo principal
+import { AlertTriangle, MapPin, LogIn, UserPlus, HeartPulse } from "lucide-react"; 
 import { useState } from "react";
 import homeImg from "../assets/img-home.jpg?w=800&format=webp&as=src";
+// ✅ Importa a função para checar o token
+import { getToken } from "../utils/auth"; 
 
 export default function Home() {
   const [darkMode, setDarkMode] = useState(false); // você pode sincronizar com Navbar se quiser
+  // ✅ Verifica o estado de login
+  const token = getToken();
+
+  const buttonClass = (isPrimary: boolean) =>
+    `block w-full sm:w-auto text-center px-8 py-3 rounded-xl text-white font-semibold shadow-md hover:shadow-lg transition 
+     ${isPrimary 
+        ? darkMode ? "bg-teal-600 hover:bg-teal-500" : "bg-[#25A18E] hover:bg-[#208B7C]" 
+        : darkMode ? "bg-gray-700 hover:bg-gray-600" : "bg-[#004E64] hover:bg-[#003b50]"
+     }`;
+
+
+  const renderHomeButtons = () => {
+    if (token) {
+      // ✅ Usuário logado: Botão IR PARA DASHBOARD
+      return (
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="w-full sm:w-auto"
+        >
+          <Link
+            to="/dashboard"
+            className={buttonClass(true) + " flex items-center justify-center gap-2"}
+          >
+            <HeartPulse size={20} /> Ir para o Dashboard
+          </Link>
+        </motion.div>
+      );
+    } else {
+      // ✅ Usuário deslogado: Entrar e Cadastrar-se
+      const buttons = [
+        { label: "Entrar", to: "/login", isPrimary: true, icon: <LogIn size={20} /> },
+        { label: "Cadastrar-se", to: "/register", isPrimary: false, icon: <UserPlus size={20} /> },
+      ];
+      return buttons.map((btn, idx) => (
+        <motion.div
+          key={btn.label}
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 + idx * 0.1 }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="w-full sm:w-auto"
+        >
+          <Link
+            to={btn.to}
+            className={buttonClass(btn.isPrimary) + " flex items-center justify-center gap-2"}
+          >
+            {btn.icon} {btn.label}
+          </Link>
+        </motion.div>
+      ));
+    }
+  };
+
 
   return (
     <div
@@ -80,42 +141,9 @@ export default function Home() {
               a clínicas veterinárias próximas via geolocalização.
             </motion.p>
 
-            {/* Botões padrão */}
-            {/* Layout responsivo: flex-col (mobile) e sm:flex-row (maiores) */}
+            {/* Botões padrão - Renderiza condicionalmente Dashboard ou Entrar/Cadastrar-se */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 mt-6">
-              {[
-                {
-                  label: "Entrar",
-                  to: "/login",
-                  bg: darkMode ? "bg-teal-600" : "bg-[#25A18E]",
-                  hover: darkMode ? "hover:bg-teal-500" : "hover:bg-[#208B7C]",
-                },
-                {
-                  label: "Cadastrar-se",
-                  to: "/register",
-                  bg: darkMode ? "bg-gray-700" : "bg-[#004E64]",
-                  hover: darkMode ? "hover:bg-gray-600" : "hover:bg-[#003b50]",
-                },
-              ].map((btn, idx) => (
-                <motion.div
-                  key={btn.label}
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 + idx * 0.1 }}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  // Garante que o div se estique no layout flex-col
-                  className="w-full sm:w-auto"
-                >
-                  <Link
-                    to={btn.to}
-                    // Botões com largura total no mobile e centralizados
-                    className={`block w-full sm:w-auto text-center px-8 py-3 rounded-xl text-white font-semibold shadow-md hover:shadow-lg transition ${btn.bg} ${btn.hover}`}
-                  >
-                    {btn.label}
-                  </Link>
-                </motion.div>
-              ))}
+                {renderHomeButtons()}
             </div>
           </div>
         </motion.div>

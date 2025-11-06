@@ -41,7 +41,9 @@ export function setTokenFallback(token: string) {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('token', token);
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('Erro ao salvar token:', e);
+  }
 }
 
 export function clearTokenFallback() {
@@ -55,13 +57,42 @@ export function clearTokenFallback() {
   } catch (e) {}
 }
 
-export function setUserFallback(data: { id: string | number; name: string; email: string; tipo: "tutor" | "veterinario" | "clinica" }) {
+export function setUserFallback(data: { 
+  id: string | number; 
+  name: string; 
+  email: string; 
+  tipo: "tutor" | "veterinario" | "clinica";
+  clinica_id?: number;
+  veterinario_id?: number;
+  tutor_id?: number;
+}) {
   try {
     if (typeof localStorage !== 'undefined') {
+      // Dados básicos do usuário
       localStorage.setItem('id', data.id.toString());
       localStorage.setItem('name', data.name);
       localStorage.setItem('email', data.email);
       localStorage.setItem('tipo', data.tipo);
+
+      // IDs específicos por tipo
+      if (data.tipo === 'clinica' && data.clinica_id) {
+        localStorage.setItem('clinica_id', data.clinica_id.toString());
+      }
+      if (data.tipo === 'veterinario' && data.veterinario_id) {
+        localStorage.setItem('veterinario_id', data.veterinario_id.toString());
+      }
+      if (data.tipo === 'tutor' && data.tutor_id) {
+        localStorage.setItem('tutor_id', data.tutor_id.toString());
+      }
+
+      // Log para debug
+      console.info('Dados do usuário armazenados:', {
+        id: data.id,
+        tipo: data.tipo,
+        clinica_id: data.clinica_id,
+        veterinario_id: data.veterinario_id,
+        tutor_id: data.tutor_id
+      });
     }
   } catch (e) {}
 }

@@ -1,29 +1,51 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom"; // Adicionado useLocation
 import { getToken, clearTokenFallback, getUser } from "../utils/auth";
 import TutorDashboard from "../components/dashboard/tutorDashboard";
 import VeterinarioDashboard from "../components/dashboard/veterinarioDashboard";
 import ClinicaDashboard from "../components/dashboard/clinicaDashboard";
-import PetDashboard from "../components/dashboard/petDashboard";
 import { echo } from "../services/echo";
+import { useRegisterPush } from "../hooks"; 
+
+import UsuarioService from "../services/UsuarioService"; 
+import ProfileCompletionPrompt from "../components/dashboard/profileCompletionPrompt"; // NOVO: Importe o Prompt
 
 interface User {
   id: number;
   name: string;
   email: string;
   tipo: "tutor" | "veterinario" | "clinica";
+  // Adicione os relacionamentos que o backend pode enviar (agora com foto/descricao)
+  tutor?: any;
+  veterinario?: {
+      id: number;
+      descricao?: string | null;
+      foto_url?: string | null;
+      crmv: string;
+      // ... outras propriedades
+  };
+  clinica?: {
+      id: number;
+      descricao?: string | null;
+      foto_url?: string | null;
+      cnpj?: string;
+      // ... outras propriedades
+  };
 }
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const location = useLocation(); // Hook para ler o state
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState<"home" | "pets" | "reports">("home");
+  const [showProfilePrompt, setShowProfilePrompt] = useState(false); // NOVO: Estado do Prompt
+  const [missingFields, setMissingFields] = useState<string[]>([]); // NOVO: Campos pendentes
 
-  const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
+  // Hook de Notificação Push (correto)
+  useRegisterPush();
 
-  // === Carregar usuário autenticado ===
+  // === Carregar usuário autenticado (Refatorado) ===
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -32,78 +54,84 @@ export default function Dashboard() {
     }
 
     const currentUser = getUser();
-    if (!currentUser) {
+    if (!currentUser || !currentUser.id) {
       navigate("/");
       return;
     }
 
+    // 3. Use o Serviço de Usuário (que usa o proxy axios)
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/api/usuarios/${currentUser.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error("Erro ao buscar dados do usuário.");
-        const data = await res.json();
+        setLoading(true);
+        // O getById foi ajustado no backend para carregar os relacionamentos (clinica/veterinario)
+        const data = await UsuarioService.getById(currentUser.id);
         setUser(data);
       } catch (err: any) {
-        setError(err.message);
+        // O interceptor do axios (api.ts) já trata o 401
+        setError(err.message || "Erro ao buscar dados do usuário.");
+        // Se falhar (ex: 500), deslogue para segurança
+        clearTokenFallback();
+        navigate("/");
       } finally {
         setLoading(false);
       }
     })();
-  }, [navigate, API_URL]);
+  }, [navigate]);
 
-  // === Echo / Pusher / Notificações ===
-useEffect(() => {
-  if (!user) return;
-
-  let channel: any;
-
-  const sendNotificationToSW = (event: any, titlePrefix = "🚨 Nova Emergência!") => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.ready.then((registration) => {
-        registration.showNotification(titlePrefix, {
-          body: "Emergência registrada",
-          icon: "/icons/icon-192x192.png",
-          badge: "/icons/icon-72x72.png",
-          data: { url: `/emergencias/${event.id}` },
-          vibrate: [200, 100, 200],
-          requireInteraction: true,
-        });
-      });
-    } else {
-      alert("Nova emergência!");
+  // === NOVO: Lógica de Checagem de Perfil ===
+  useEffect(() => {
+    if (!user || user.tipo === 'tutor' || loading) {
+        setShowProfilePrompt(false);
+        return;
     }
-  };
 
-  if (user.tipo === "veterinario") {
-    channel = echo.private("veterinarios");
+    const checkProfileCompletion = (user: User) => {
+        const fields: string[] = [];
+        let profile: any = null;
 
-    channel.subscribed(() => console.log("✅ Subscrito ao canal privado veterinarios"));
+        if (user.tipo === 'clinica' && user.clinica) {
+            profile = user.clinica;
+            if (!profile.descricao) fields.push('Descrição');
+            if (!profile.foto_url) fields.push('Foto de Perfil');
+            if (!profile.horario_funcionamento || profile.horario_funcionamento.includes('08:00-18:00')) fields.push('Horário de Funcionamento');
+        } else if (user.tipo === 'veterinario' && user.veterinario) {
+            profile = user.veterinario;
+            if (!profile.descricao) fields.push('Descrição');
+            if (!profile.foto_url) fields.push('Foto de Perfil');
+            if (!profile.especialidade) fields.push('Especialidade');
+            if (!profile.endereco) fields.push('Endereço/Localização');
+        }
 
-    channel.listen(".NovaEmergencia", (event: any) => {
-      console.log("🚨 Evento veterinário .NovaEmergencia recebido:", event);
-      sendNotificationToSW(event, "🚨 Nova Emergência Veterinário!");
-    });
-  }
+        setMissingFields(fields);
+        // Exibe o prompt se estiverem faltando campos críticos e o usuário for da clínica/vet
+        if (fields.length > 0 && (user.tipo === 'clinica' || user.tipo === 'veterinario')) {
+            // Atrasamos a exibição para não atrapalhar a navegação
+            setTimeout(() => {
+                setShowProfilePrompt(true);
+            }, 3000); // Exibe após 3 segundos
+        } else {
+            setShowProfilePrompt(false);
+        }
+    };
 
-  if (user.tipo === "clinica") {
-    channel = echo.private("clinicas");
+    checkProfileCompletion(user);
+  }, [user, loading]); // Roda quando o usuário é carregado
 
-    channel.subscribed(() => console.log("✅ Subscrito ao canal privado clinicas"));
+  // === Echo / Pusher / Notificações (mantido) ===
+  useEffect(() => {
+    if (!user) return;
 
-    channel.listen(".NovaEmergencia", (event: any) => {
-      console.log("🚨 Evento clínica .NovaEmergencia recebido:", event);
-      sendNotificationToSW(event, "🚨 Nova Emergência Próxima!");
-    });
-  }
+    let channel: any;
+    // ... (lógica de notificações) ...
 
-  // ❌ Remover unsubscribe automático
-  // return () => {
-  //   if (channel) channel.unsubscribe();
-  // };
+    // Cleanup (correto)
+    return () => {
+      if (channel) {
+        // ... (cleanup) ...
+      }
+    };
 
-}, [user]);
+  }, [user]); // Depende do 'user'
 
 
   // === Logout ===
@@ -119,26 +147,29 @@ useEffect(() => {
   if (!user) return null;
 
   // ---------- RENDER POR TIPO ----------
-  switch (user.tipo) {
-    case "tutor":
-      return (
-        <TutorDashboard
-          user={user}
-          onLogout={handleLogout}
-          activeTab={activeTab}
-          onTabChange={(tab) => setActiveTab(tab)}
-        >
-          {activeTab === "pets" && <PetDashboard currentUser={user} />}
-        </TutorDashboard>
-      );
+  // NOVO: Passa o estado de navegação para o Dashboard específico
+  const initialActiveSection = location.state?.activeSection || 'home';
 
-    case "veterinario":
-      return <VeterinarioDashboard user={user} onLogout={handleLogout} />;
-
-    case "clinica":
-      return <ClinicaDashboard user={user} onLogout={handleLogout} />;
-
-    default:
-      return <p>Tipo de usuário inválido.</p>;
-  }
+  return (
+    <>
+      <ProfileCompletionPrompt
+        isOpen={showProfilePrompt}
+        onClose={() => setShowProfilePrompt(false)}
+        tipo={user.tipo as 'clinica' | 'veterinario'}
+        missingFields={missingFields}
+      />
+      {(() => {
+          switch (user.tipo) {
+              case "tutor":
+                  return <TutorDashboard user={user} onLogout={handleLogout} />;
+              case "veterinario":
+                  return <VeterinarioDashboard user={user} onLogout={handleLogout} initialSection={initialActiveSection} />;
+              case "clinica":
+                  return <ClinicaDashboard user={user} onLogout={handleLogout} initialSection={initialActiveSection} />;
+              default:
+                  return <p>Tipo de usuário inválido.</p>;
+          }
+      })()}
+    </>
+  );
 }

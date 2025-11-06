@@ -4,25 +4,28 @@ namespace App\Models;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
+// 1. ADICIONE ESTA LINHA (para importar o pacote de WebPush)
+use NotificationChannels\WebPush\HasPushSubscriptions;
 
 class Usuario extends Authenticatable implements JWTSubject
 {
-    use Notifiable;
+    // 2. ADICIONE O TRAIT AQUI (junto ao Notifiable)
+    use Notifiable, HasPushSubscriptions;
 
     protected $fillable = [
-    'name',
-    'nome_completo',
-    'email',
-    'password',
-    'tipo',
-    'cpf',
-    'cnpj',
-    'nome_fantasia',
-    'razao_social',
-    'endereco',
-    'telefone_principal',
-    'telefone_alternativo',
-];
+        'name',
+        'nome_completo',
+        'email',
+        'password',
+        'tipo',
+        'cpf',
+        'cnpj',
+        'nome_fantasia',
+        'razao_social',
+        'endereco',
+        'telefone_principal',
+        'telefone_alternativo',
+    ];
 
 
     protected $hidden = [

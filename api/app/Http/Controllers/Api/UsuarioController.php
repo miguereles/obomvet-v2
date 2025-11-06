@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Usuario;
-use App\Models\Tutor;
 use App\Models\Veterinario;
 use App\Models\Clinica;
 use App\Http\Controllers\Controller;
@@ -35,7 +34,6 @@ class UsuarioController extends Controller
 
         $usuario = Usuario::create($validated);
 
-        // Cria modelo associado com dados obrigatórios
         $this->ensureAssociatedModel($usuario, $request);
 
         return response()->json(array_merge(
@@ -46,6 +44,9 @@ class UsuarioController extends Controller
 
     public function show(Usuario $usuario)
     {
+        // NOVO: Carrega os modelos associados eager-loaded para o dashboard verificar o perfil
+        $usuario->load(['tutor', 'veterinario', 'clinica']); 
+        
         return array_merge(
             $usuario->toArray(),
             $this->attachedIds($usuario)
@@ -83,10 +84,15 @@ class UsuarioController extends Controller
 
     protected function attachedIds(Usuario $usuario)
     {
+        // Garante que o modelo associado foi carregado antes de tentar acessar
+        $tutorId = $usuario->tutor->id ?? null;
+        $veterinarioId = $usuario->veterinario->id ?? null;
+        $clinicaId = $usuario->clinica->id ?? null;
+        
         return [
-            'tutor_id' => $usuario->tutor->id ?? null,
-            'veterinario_id' => $usuario->veterinario->id ?? null,
-            'clinica_id' => $usuario->clinica->id ?? null,
+            'tutor_id' => $tutorId,
+            'veterinario_id' => $veterinarioId,
+            'clinica_id' => $clinicaId,
         ];
     }
 
@@ -135,5 +141,48 @@ class UsuarioController extends Controller
                 ]);
             }
         }
+    }
+
+    /**
+     * ✅ Cria um usuário + veterinário vinculado a uma clínica
+     */
+    public function storeVeterinario(Request $request)
+    {
+        $validated = $request->validate([
+            'clinica_id' => 'required|exists:clinicas,id',
+            'nome_completo' => 'required|string|max:255',
+            'email' => 'required|email|max:255|unique:usuarios,email',
+            'password' => 'required|string|min:6',
+            'crmv' => 'required|string|max:50',
+            'especialidade' => 'nullable|string|max:255',
+            'telefone_principal' => 'nullable|string|max:50',
+            'disponivel_24h' => 'boolean',
+        ]);
+
+        // Cria o usuário
+        $usuario = Usuario::create([
+            'name' => trim(explode(' ', $request->nome_completo)[0]), 
+            'nome_completo' => $validated['nome_completo'],
+            'email' => $validated['email'],
+            'password' => Hash::make($validated['password']),
+            'tipo' => 'veterinario',
+        ]);
+
+        // Cria o veterinário vinculado à clínica
+        $veterinario = Veterinario::create([
+            'usuario_id' => $usuario->id,
+            'clinica_id' => $validated['clinica_id'],
+            'nome_completo' => $validated['nome_completo'],
+            'crmv' => $validated['crmv'],
+            'especialidade' => $validated['especialidade'] ?? null,
+            'telefone_emergencia' => $validated['telefone_principal'] ?? 'sem telefone',
+            'disponivel_24h' => $validated['disponivel_24h'] ?? false,
+            'autonomo' => false,
+        ]);
+
+        return response()->json([
+            'usuario' => $usuario,
+            'veterinario' => $veterinario,
+        ], 201);
     }
 }

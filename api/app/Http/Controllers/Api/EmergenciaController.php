@@ -4,9 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Emergencia;
 use App\Models\Clinica;
+use App\Models\Pet;
 use App\Events\NovaEmergencia;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\Tutor;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class EmergenciaController extends Controller
 {
@@ -43,17 +47,57 @@ class EmergenciaController extends Controller
     {
         $user = $request->user();
 
+        // validações: se usuário tutor autenticado, exige pet_id; se anônimo exigir contato (nome/telefone) ou pet existente
         if (!$user || !$user->tutor) {
             $validated = $request->validate([
                 'descricao_sintomas' => 'required|string',
                 'nivel_urgencia' => 'required|in:baixa,media,alta,critica',
                 'pet_id' => 'nullable|exists:pets,id',
+                'tutor_nome' => 'required_without:pet_id|string|max:100',
+                'tutor_telefone' => 'required_without:pet_id|string|max:20',
                 'location' => 'nullable|array',
                 'location.latitude' => 'required_with:location|numeric',
                 'location.longitude' => 'required_with:location|numeric',
+                'recaptcha_token' => 'nullable|string'
             ]);
-            // return response()->json(['error' => 'Usuário tutor não autenticado'], 401);
-        }else{
+
+            // opcional: verificar reCAPTCHA
+            if (!empty($validated['recaptcha_token']) && env('RECAPTCHA_SECRET')) {
+                try {
+                    $resp = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+                        'secret' => env('RECAPTCHA_SECRET'),
+                        'response' => $validated['recaptcha_token']
+                    ]);
+                    $body = $resp->json();
+                    if (empty($body['success']) || (isset($body['score']) && $body['score'] < 0.3)) {
+                        return response()->json(['error' => 'reCAPTCHA inválido'], 400);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('reCAPTCHA verification failed for anonymous emergencia: ' . $e->getMessage());
+                }
+            }
+
+            // criar Tutor temporário se necessário
+            if (empty($validated['pet_id'])) {
+                $tutor = Tutor::create([
+                    'usuario_id' => null,
+                    'nome_completo' => $validated['tutor_nome'],
+                    'telefone_principal' => $validated['tutor_telefone']
+                ]);
+
+                // gerar token de edição para tutor anônimo
+                try {
+                    $tutorToken = bin2hex(random_bytes(16));
+                    $tutor->anonymous_edit_token = $tutorToken;
+                    $tutor->anonymous_edit_token_expires_at = now()->addDays(7);
+                    $tutor->save();
+                } catch (\Exception $e) {
+                    Log::warning('Falha ao gerar token para tutor anônimo na emergência: ' . $e->getMessage());
+                }
+
+                $validated['tutor_id'] = $tutor->id;
+            }
+        } else {
             $validated = $request->validate([
                 'descricao_sintomas' => 'required|string',
                 'nivel_urgencia' => 'required|in:baixa,media,alta,critica',
@@ -71,9 +115,33 @@ class EmergenciaController extends Controller
         $userLocation = $request->input('location');
         $clinicaAlvo = null;
 
+        // Se necessário, criar pet temporário para emergência anônima (quando foi enviado pet_nome)
+        if (empty($validated['pet_id']) && !empty($validated['pet_nome'])) {
+            try {
+                $pet = Pet::create([
+                    'nome' => $validated['pet_nome'],
+                    'especie' => $validated['pet_especie'] ?? 'N/A',
+                    'tutor_id' => $validated['tutor_id'] ?? null,
+                ]);
+                $validated['pet_id'] = $pet->id;
+                // gerar token para pet temporário
+                try {
+                    $petToken = bin2hex(random_bytes(16));
+                    $pet->anonymous_edit_token = $petToken;
+                    $pet->anonymous_edit_token_expires_at = now()->addDays(7);
+                    $pet->save();
+                } catch (\Exception $e) {
+                    Log::warning('Falha ao gerar token para pet temporário na emergência: ' . $e->getMessage());
+                }
+            } catch (\Exception $e) {
+                Log::warning('Falha ao criar pet temporário: ' . $e->getMessage());
+            }
+        }
+
         // Busca todas as clínicas
         $todasClinicas = Clinica::all();
         if ($todasClinicas->isEmpty()) {
+            //eventualmente precisa retirar isso daqui
             return response()->json(['error' => 'Nenhuma clínica cadastrada no sistema'], 400);
         }
 
@@ -113,15 +181,133 @@ class EmergenciaController extends Controller
 
         $validated['clinica_id'] = $clinicaAlvo->id;
 
-        // Remove location para não dar erro
+        // Persistir localização da emergência no formato 'lat,lng' para futuras reatribuições
+        if ($userLocation && isset($userLocation['latitude']) && isset($userLocation['longitude'])) {
+            $validated['localizacao'] = $userLocation['latitude'] . ',' . $userLocation['longitude'];
+        }
+
+        // Remove location array para não dar erro
         unset($validated['location']);
 
+        // Remover dados temporários e tokens
+        unset($validated['recaptcha_token'], $validated['tutor_nome'], $validated['tutor_telefone']);
+
+        // Log para auditoria mínima do request anônimo
+        Log::info('Criando emergência', [
+            'ip' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+            'tutor_id' => $validated['tutor_id'] ?? null,
+        ]);
+
         $emergencia = Emergencia::create($validated);
+        
         NovaEmergencia::dispatch($emergencia);
-        return response()->json([
-            'emergencia' => $emergencia,
-            'clinica' => $clinicaAlvo
-        ], 201);
+                // if (!$clinicaAlvo) {
+
+        //     return response()->json([
+        //         'emergencia' => $emergencia,
+        //     ], 201);
+        // }else{
+        //     $validated['clinica_id'] = $clinicaAlvo->id;
+        //     return response()->json([
+        //         'emergencia' => $emergencia,
+        //         'clinica' => $clinicaAlvo
+        //     ], 201);
+        // }
+        $response = ['emergencia' => $emergencia, 'clinica' => $clinicaAlvo];
+        if (isset($tutorToken)) $response['edit_tokens']['tutor'] = $tutorToken;
+        if (isset($petToken)) $response['edit_tokens']['pet'] = $petToken;
+
+        return response()->json($response, 201);
+    }
+
+    /**
+     * Clínica cancela uma emergência e solicita reatribuição automática.
+     */
+    public function cancel(Request $request, Emergencia $emergencia)
+    {
+        $user = $request->user();
+        if (!$user || !$user->clinica) {
+            return response()->json(['error' => 'Usuário não é clínica autenticada.'], 403);
+        }
+
+        // Só a clínica atribuída pode cancelar
+        if ($emergencia->clinica_id !== $user->clinica->id) {
+            return response()->json(['error' => 'Emergência não pertence a esta clínica.'], 403);
+        }
+
+        $emergencia->status = 'cancelled';
+        $emergencia->save();
+
+        // Tentar reatribuir automaticamente
+        $this->redirectToClinic($request, $emergencia);
+
+        return response()->json(['message' => 'Emergência cancelada e reatribuição solicitada.', 'emergencia' => $emergencia]);
+    }
+
+    /**
+     * Redireciona uma emergência para outra clínica (automático ou manual).
+     */
+    public function redirectToClinic(Request $request, Emergencia $emergencia)
+    {
+        // Encontrar clínica alvo: se enviado clinic_id use ele, caso contrário escolha a mais próxima diferente da atual
+        $targetClinicaId = $request->input('clinica_id');
+
+        if ($targetClinicaId) {
+            $target = Clinica::find($targetClinicaId);
+        } else {
+            // escolher automaticamente a clínica mais próxima (exclui a atual)
+            $todasClinicas = Clinica::whereNotNull('localizacao')->get()->filter(function($c) use ($emergencia) {
+                return $c->id !== $emergencia->clinica_id;
+            });
+
+            if ($todasClinicas->isEmpty()) {
+                return response()->json(['error' => 'Nenhuma outra clínica disponível'], 400);
+            }
+
+            $coords = null;
+            if ($emergencia->localizacao) {
+                $coords = explode(',', $emergencia->localizacao);
+            }
+
+            $best = null;
+            $min = PHP_INT_MAX;
+            foreach ($todasClinicas as $clinica) {
+                // Prefer explicit lat/lng columns if available
+                if (!empty($clinica->lat) && !empty($clinica->lng)) {
+                    $clinicLat = (float) $clinica->lat;
+                    $clinicLon = (float) $clinica->lng;
+                } else {
+                    $ccoords = explode(',', $clinica->localizacao);
+                    if (count($ccoords) !== 2) continue;
+                    // Suporta formatos "L:lat,G:lon" ou "lat,lon"
+                    $rawLat = trim(str_replace(['L:', 'G:'], '', $ccoords[0]));
+                    $rawLon = trim(str_replace(['L:', 'G:'], '', $ccoords[1]));
+                    $clinicLat = (float) $rawLat;
+                    $clinicLon = (float) $rawLon;
+                }
+
+                if ($coords && count($coords) === 2) {
+                    $dist = $this->haversineDistance((float)$coords[0], (float)$coords[1], $clinicLat, $clinicLon);
+                } else {
+                    $dist = 0; // fallback
+                }
+
+                if ($dist < $min) { $min = $dist; $best = $clinica; }
+            }
+            $target = $best;
+        }
+
+        if (!$target) return response()->json(['error'=>'Não foi possível encontrar clínica alvo'], 400);
+
+        $emergencia->clinica_id = $target->id;
+        $emergencia->status = 'assigned';
+        $emergencia->save();
+
+        // Notificar: disparar evento para clínicas e possivelmente notificar tutor
+        NovaEmergencia::dispatch($emergencia);
+
+        return response()->json(['message'=>'Emergência reatribuída', 'emergencia' => $emergencia, 'clinica' => $target]);
     }
 
     public function show(Emergencia $emergencia)
@@ -185,22 +371,49 @@ class EmergenciaController extends Controller
 
         return response()->json($emergencias);
     }
+
+    // ======================================================
+    // FUNÇÃO CORRIGIDA (V3 - Consulta Manual + Lazy Loading)
+    // ======================================================
     public function porClinica(Request $request)
-{
-    $user = $request->user();
+    {
+        try {
+            $user = $request->user();
 
-    // Garante que o usuário é de uma clínica
-    if (!$user || !$user->clinica) {
-        return response()->json(['error' => 'Usuário não é uma clínica autenticada.'], 403);
+            if (!$user) {
+                return response()->json(['error' => 'Usuário não autenticado'], 401);
+            }
+
+            // 1. Consulta manual pela clínica
+            // (Isto usa o Model Clinica [cite: app/Models/Clinica.php])
+            $clinica = \App\Models\Clinica::where('usuario_id', $user->id)->first();
+
+            if (!$clinica) {
+                // Adiciona um Log para sabermos *quem* tentou acessar
+                Log::warning('Tentativa de acesso a porClinica falhou. Usuário não é uma clínica.', ['user_id' => $user->id, 'email' => $user->email]);
+                return response()->json(['error' => 'Nenhum registro de clínica encontrado para este usuário.'], 403);
+            }
+
+            // 2. Busca emergências SEM o 'with()' primeiro, para isolar o erro
+            $emergencias = \App\Models\Emergencia::where('clinica_id', $clinica->id)
+                ->orderByDesc('created_at')
+                ->get();
+
+            // 3. Carrega as relações 'pet' e 'tutor' manualmente (Lazy Loading)
+            // O frontend 'emergenciaClinica.tsx' [cite: src/components/dashboard/emergenciaClinica.tsx] precisa delas.
+            // Se houver um erro 500 aqui, o problema está nas definições
+            // das relações 'pet()' ou 'tutor()' no Model 'Emergencia.php' [cite: app/Models/Emergencia.php].
+            $emergencias->load(['pet', 'tutor']);
+
+            return response()->json($emergencias);
+
+        } catch (\Exception $e) {
+            // Se um erro 500 ocorrer, isto irá capturá-lo e reportá-lo
+            Log::error('Erro fatal em porClinica: ' . $e->getMessage(), [
+                'user_id' => $user->id ?? 'null',
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['error' => 'Erro interno do servidor. O administrador foi notificado.'], 500);
+        }
     }
-
-    // Busca emergências associadas à clínica
-    $emergencias = \App\Models\Emergencia::with(['pet', 'tutor'])
-        ->where('clinica_id', $user->clinica->id)
-        ->orderByDesc('created_at')
-        ->get();
-
-    return response()->json($emergencias);
-}
-
 }

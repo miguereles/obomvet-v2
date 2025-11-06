@@ -11,9 +11,10 @@ import About from './pages/about';
 import './styles/app.css';
 import { getToken } from './utils/auth';
 import ClinicPage from "./pages/clinicPage";
+import RegisteredClinicPage from "./pages/registeredClinicPage";
 import { DarkModeProvider } from "./contexts/DarkModeContext";
 import 'tippy.js/dist/tippy.css';
-import { RegisteredClinicPage } from "./pages/registeredClinicPage";
+//import { RegisteredClinicPage } from "./pages/registeredClinicPage";
 
 
 function PrivateRoute({ children }: { children: JSX.Element }) {
@@ -41,7 +42,6 @@ export default function App() {
         <Route path="/reportInput" element={<ReportInput />} />
         <Route path="/features" element={<Features />} />
         <Route path="/about" element={<About />} />
-        <Route path="/clinicPage" element={<ClinicPage />} />
         <Route path="/clinicPage" element={<ClinicPage />} />
         <Route path="/registeredClinicPage" element={<RegisteredClinicPage />} />
         {/* Redireciona qualquer rota desconhecida para a Home */}

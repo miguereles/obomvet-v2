@@ -19,16 +19,19 @@ class VeterinarioPolicy
 
     public function create(Usuario $user): bool
     {
-        return true;
+        // Apenas usuários vinculados a uma clínica podem criar veterinários para essa clínica
+        return isset($user->clinica);
     }
 
     public function update(Usuario $user, Veterinario $veterinario): bool
     {
-        return true;
+        // Apenas a clínica proprietária pode atualizar um veterinário vinculado a ela
+        return isset($user->clinica) && $veterinario->clinica_id === $user->clinica->id;
     }
 
     public function delete(Usuario $user, Veterinario $veterinario): bool
     {
-        return true;
+        // Apenas a clínica proprietária pode deletar o veterinário
+        return isset($user->clinica) && $veterinario->clinica_id === $user->clinica->id;
     }
 }

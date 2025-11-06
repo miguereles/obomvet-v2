@@ -62,6 +62,44 @@ class TutorController extends Controller
         return response()->noContent();
     }
 
+    // Atualizar tutor usando token anônimo
+    public function updateWithToken(Request $request, Tutor $tutor)
+    {
+        $token = $request->query('token') ?? $request->input('token');
+        if (!$token || $tutor->anonymous_edit_token !== $token) {
+            return response()->json(['error' => 'Token inválido'], 403);
+        }
+
+        if ($tutor->anonymous_edit_token_expires_at && now()->greaterThan($tutor->anonymous_edit_token_expires_at)) {
+            return response()->json(['error' => 'Token expirado'], 403);
+        }
+
+        $data = $request->validate([
+            'nome' => 'sometimes|required|string|max:255',
+            'telefone' => 'sometimes|nullable|string|max:20',
+            'endereco' => 'sometimes|nullable|string|max:255',
+        ]);
+
+        $tutor->update($data);
+        return response()->json($tutor);
+    }
+
+    // Deletar tutor usando token anônimo
+    public function destroyWithToken(Request $request, Tutor $tutor)
+    {
+        $token = $request->query('token') ?? $request->input('token');
+        if (!$token || $tutor->anonymous_edit_token !== $token) {
+            return response()->json(['error' => 'Token inválido'], 403);
+        }
+
+        if ($tutor->anonymous_edit_token_expires_at && now()->greaterThan($tutor->anonymous_edit_token_expires_at)) {
+            return response()->json(['error' => 'Token expirado'], 403);
+        }
+
+        $tutor->delete();
+        return response()->noContent();
+    }
+
     // Retorna pets do tutor
     public function getPets(Tutor $tutor)
     {

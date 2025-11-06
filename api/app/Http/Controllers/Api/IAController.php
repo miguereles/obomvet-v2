@@ -8,8 +8,6 @@ use Illuminate\Support\Facades\Http;
 
 class IAController extends Controller
 {
-    // use DisableAuthorization;
-
     /**
      * Autorização para uso público (chave secreta)
      */
@@ -25,33 +23,34 @@ class IAController extends Controller
      * Transcrição para usuários logados
      */
     public function transcribeUnified(Request $request)
-{
-    // Se não estiver logado, checa chave pública
-    if (!$request->user()) {
-        $this->authorizePublic($request);
+    {
+        if (!$request->user()) {
+            $this->authorizePublic($request);
+        }
+
+        [$tutor, $pets] = $this->getTutorAndPets($request);
+        $transcription = $this->transcribeAudio($request->file('file'));
+        $prompt = $this->buildAutofillPrompt($tutor, $pets, $transcription);
+
+        return $this->sendPromptToAI($prompt);
     }
 
-    [$tutor, $pets] = $this->getTutorAndPets($request);
-    $transcription = $this->transcribeAudio($request->file('file'));
-    $prompt = $this->buildAutofillPrompt($tutor, $pets, $transcription);
+    /**
+     * Análise textual direta (sem áudio)
+     */
+    public function analyzeTextUnified(Request $request)
+    {
+        if (!$request->user()) {
+            $this->authorizePublic($request);
+        }
 
-    return $this->sendPromptToAI($prompt);
-}
+        $request->validate(['text' => 'required|string']);
+        [$tutor, $pets] = $this->getTutorAndPets($request);
+        $text = $request->input('text');
+        $prompt = $this->buildAutofillPrompt($tutor, $pets, $text);
 
-public function analyzeTextUnified(Request $request)
-{
-    if (!$request->user()) {
-        $this->authorizePublic($request);
+        return $this->sendPromptToAI($prompt);
     }
-
-    $request->validate(['text' => 'required|string']);
-    [$tutor, $pets] = $this->getTutorAndPets($request);
-    $text = $request->input('text');
-    $prompt = $this->buildAutofillPrompt($tutor, $pets, $text);
-
-    return $this->sendPromptToAI($prompt);
-}
-
 
     /**
      * Obtém tutor e pets
@@ -88,7 +87,7 @@ public function analyzeTextUnified(Request $request)
     }
 
     /**
-     * Monta prompt
+     * Monta prompt contextual para o Agente OBomVet
      */
     private function buildAutofillPrompt($tutor, $pets, $transcription)
     {
@@ -103,52 +102,10 @@ public function analyzeTextUnified(Request $request)
         $tutorText = $tutor ? "- nome: {$tutor->nome_completo}, telefone: {$tutor->telefone_principal}, cpf: {$tutor->cpf}" : "nenhum";
 
         return <<<PROMPT
-Você é um assistente de triagem para emergências veterinárias.
-
-Receberá:
-- Um relato textual transcrito (pode ter vindo de áudio)
-- Informações do tutor logado (se houver)
-- Lista de pets cadastrados (pode estar vazia)
-
-Tarefas:
-1. Se o tutor **não estiver logado**, extraia do relato:
-   - nome do tutor,
-   - telefone para contato,
-   - nome, espécie e idade do animal.
-
-2. Se o tutor estiver logado, use seus dados.  
-   Se ele **não tiver pets**, extraia do relato as informações do animal.
-
-3. Analise o relato e identifique:
-   - tipo de emergência (ex: atropelamento, intoxicação, sangramento, febre)
-   - nível de urgência (alta, média, baixa)
-   - ação recomendada imediata (ex: levar à clínica, manter aquecido, oferecer água)
-
-4. Retorne um JSON **válido** e estruturado assim:
-{
-  "tutor": {
-    "nome": "...",
-    "telefone": "..."
-  },
-  "animal": {
-    "nome": "...",
-    "especie": "...",
-    "idade": "...",
-    "tem_cadastro": true
-  },
-  "emergencia": {
-    "tipo": "...",
-    "urgencia": "...",
-    "acao_recomendada": "..."
-  }
-}
-
 Tutor logado: {$tutorLogado}
 Tutor tem pet cadastrado: {$temPet}
-
 Dados do tutor logado (se houver):
 {$tutorText}
-
 Pets cadastrados:
 {$petsText}
 
@@ -158,21 +115,119 @@ PROMPT;
     }
 
     /**
-     * Envia prompt para API da OpenAI
+     * Envia prompt para o modelo GPT-4.1 (Agente OBomVet)
+     * Agora retorna apenas o JSON puro da IA.
      */
     private function sendPromptToAI($prompt)
     {
+        $agenteInstructions = <<<INSTRUCTIONS
+Você é o **Agente OBomVet**, um assistente de triagem para emergências veterinárias. 
+Analise cuidadosamente os dados recebidos e extraia as informações solicitadas para preencher o JSON completo.
+
+# Contexto:
+Você recebe:
+- Relato textual de uma emergência (pode vir de áudio transcrito);
+- Dados do tutor (caso esteja logado);
+- Lista de pets cadastrados (pode estar vazia).
+
+# Sua tarefa:
+1. Se o tutor *não estiver logado*, extraia do relato:
+   - nome do tutor,
+   - telefone para contato,
+   - nome, espécie e idade do animal.
+2. Se o tutor estiver logado, use seus dados.
+   Se ele *não tiver pets*, extraia do relato as informações do animal.
+3. Analise o relato e identifique:
+   - tipo de emergência (ex: atropelamento, intoxicação, sangramento, febre)
+   - nível de urgência (alta, média, baixa)
+   - ação recomendada imediata (ex: levar à clínica, manter aquecido, oferecer água)
+   - descrição dos sintomas
+   - possível local (endereço, rua, etc.)
+   - se a visita deve ser presencial ou remota
+   - diagnóstico preliminar
+   - prescrição médica sugerida
+   - estimativa de custo (se possível)
+
+# Regras de resposta:
+- Sempre preencha *todos* os campos do JSON (use null se faltar informação).
+- O JSON deve estar **válido** e conter exatamente esta estrutura:
+
+{
+  "tutor": {
+    "id": null,
+    "nome": "...",
+    "telefone": "..."
+  },
+  "animal": {
+    "id": null,
+    "nome": "...",
+    "especie": "...",
+    "idade": "...",
+    "tem_cadastro": true
+  },
+  "emergencia": {
+    "id": null,
+    "pet_id": null,
+    "tutor_id": null,
+    "veterinario_id": null,
+    "clinica_id": null,
+    "descricao_sintomas": "...",
+    "visita_tipo": "...",
+    "localizacao": "...",
+    "nivel_urgencia": "...",
+    "status": "aberta",
+    "data_abertura": "YYYY-MM-DDTHH:MM:SSZ",
+    "data_conclusao": null,
+    "diagnostico": "...",
+    "prescricao_medica": "...",
+    "custo_estimado": null
+  }
+}
+
+# Modo de raciocínio:
+1. Liste cada informação identificada (e explique como extraiu).
+2. Descreva o raciocínio para determinar tipo e urgência da emergência.
+3. Somente após isso, retorne o JSON final, completamente preenchido.
+
+# Importante:
+- "status" sempre inicia como "aberta".
+- "data_abertura" deve conter a data/hora atual em ISO 8601.
+- "pet_id" e "tutor_id" só devem ser preenchidos se existirem no sistema.
+- Seja explicativo e coerente, mas o JSON final deve estar limpo (sem comentários).
+
+INSTRUCTIONS;
+
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
+            'Content-Type' => 'application/json',
         ])->post('https://api.openai.com/v1/chat/completions', [
-            'model' => 'gpt-4o-mini',
+            'model' => 'gpt-4.1',
             'messages' => [
-                ['role' => 'system', 'content' => 'Você é um assistente que interpreta relatos de emergência veterinária e retorna JSON estruturado.'],
+                ['role' => 'system', 'content' => $agenteInstructions],
                 ['role' => 'user', 'content' => $prompt],
             ],
-            'temperature' => 0.3,
+            'temperature' => 1.0,
+            'top_p' => 1.0,
+            'max_tokens' => 2048,
         ]);
 
-        return $response->json();
+        // Extrai a resposta textual da IA
+        $raw = $response->json('choices.0.message.content') ?? '';
+
+        // Tenta encontrar apenas o JSON dentro do texto
+        preg_match('/\{(?:[^{}]|(?R))*\}/s', $raw, $match);
+        if (isset($match[0])) {
+            $json = $match[0];
+            $decoded = json_decode($json, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return response()->json($decoded);
+            }
+        }
+
+        // Se não encontrou JSON válido, retorna erro
+        return response()->json([
+            'error' => 'Falha ao extrair JSON da resposta da IA',
+            'raw' => $raw,
+        ], 500);
     }
 }

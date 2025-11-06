@@ -21,10 +21,14 @@ class Clinica extends Model
         'disponivel_24h',
         'publica',
         'localizacao',
+        'descricao', // NOVO: Adicionado aqui
+        'foto_url', // NOVO: Adicionado aqui
+        'usuario_id',
     ];
 
     protected $casts = [
         'disponivel_24h' => 'boolean',
+        'publica' => 'boolean',
     ];
 
     /**
@@ -43,4 +47,9 @@ class Clinica extends Model
     {
         return $this->belongsTo(Clinica::class);
     }
+    public function veterinarios()
+{
+    return $this->hasMany(Veterinario::class, 'clinica_id');
+}
+
 }

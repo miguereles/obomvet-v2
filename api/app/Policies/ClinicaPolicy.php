@@ -24,11 +24,13 @@ class ClinicaPolicy
 
     public function update(Usuario $user, Clinica $clinica): bool
     {
-        return true;
+        // Apenas o usuário vinculado à clínica pode atualizar os dados da clínica
+        return isset($user->clinica) && $user->clinica->id === $clinica->id;
     }
 
     public function delete(Usuario $user, Clinica $clinica): bool
     {
-        return true;
+        // Apenas o usuário vinculado à clínica pode deletar a clínica
+        return isset($user->clinica) && $user->clinica->id === $clinica->id;
     }
 }

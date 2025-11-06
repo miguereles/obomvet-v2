@@ -1,12 +1,23 @@
 import { useState, useEffect } from "react";
-import { Loader2, MapPin, Building2, XCircle } from "lucide-react";
+import { Loader2, MapPin, Building2, XCircle, User } from "lucide-react";
 
 interface ClinicSelectModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (clinic: any) => void;
+  onSelect: (provider: any) => void;
   visitaTipo: string;
   userLocation: { lat: number; lng: number } | null;
+}
+
+interface Provider {
+  id: number;
+  nome?: string;
+  nome_completo?: string;
+  endereco?: string;
+  distancia?: number;
+  disponivel_24h?: boolean;
+  avaliacao?: number;
+  tipo: 'clinica' | 'veterinario';
 }
 
 export default function ClinicSelectModal({
@@ -16,68 +27,82 @@ export default function ClinicSelectModal({
   visitaTipo,
   userLocation,
 }: ClinicSelectModalProps) {
-  const [clinics, setClinics] = useState<any[]>([]);
+  const [allProviders, setAllProviders] = useState<Provider[]>([]);
+  const [filteredProviders, setFilteredProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<'todos' | 'clinicas' | 'veterinarios'>('todos');
+  const [sortBy, setSortBy] = useState<'distancia' | 'avaliacao'>('distancia');
+
+  // Atualiza a lista filtrada quando mudam os dados, tipo ou ordenação
+  useEffect(() => {
+    let filtered = [...allProviders];
+
+    if (selectedType !== 'todos') {
+      filtered = filtered.filter(p => p.tipo === (selectedType === 'clinicas' ? 'clinica' : 'veterinario'));
+    }
+
+    filtered.sort((a, b) => {
+      const aDist = a.distancia ?? Number.POSITIVE_INFINITY;
+      const bDist = b.distancia ?? Number.POSITIVE_INFINITY;
+      const aEval = a.avaliacao ?? 0;
+      const bEval = b.avaliacao ?? 0;
+
+      if (sortBy === 'distancia') return aDist - bDist;
+      return bEval - aEval;
+    });
+
+    setFilteredProviders(filtered);
+  }, [allProviders, selectedType, sortBy]);
 
   useEffect(() => {
     if (!isOpen) return;
-
     if (!userLocation) {
-      setClinics([]);
-      setError("Localização não disponível. Ative o GPS para ver clínicas próximas.");
+      setAllProviders([]);
+      setFilteredProviders([]);
+      setError("Localização não disponível. Ative o GPS para ver opções próximas.");
       return;
     }
 
-    const fetchClinics = async () => {
+    const fetchProviders = async () => {
       setLoading(true);
       setError(null);
 
       try {
-        const url = `${import.meta.env.VITE_API_URL}/api/clinicas-publicas?lat=${userLocation.lat}&lng=${userLocation.lng}`;
-        console.log("📡 Buscando clínicas em:", url);
+  const API_URL = (import.meta as any).env?.VITE_API_URL || (import.meta as any).VITE_API_URL || '';
+        const [clinicsResponse, vetsResponse] = await Promise.all([
+          fetch(`${API_URL}/api/clinicas-publicas?lat=${userLocation.lat}&lng=${userLocation.lng}`),
+          fetch(`${API_URL}/api/veterinarios-autonomos?lat=${userLocation.lat}&lng=${userLocation.lng}`)
+        ]);
 
-        const response = await fetch(url, {
-          headers: { Accept: "application/json" },
-          redirect: "follow", // deixa o Laravel responder sem erro
-        });
+        const [clinicsJson, vetsJson] = await Promise.all([
+          clinicsResponse.json(),
+          vetsResponse.json()
+        ]);
 
-        const text = await response.text();
-
-        // Se o backend retornou HTML em vez de JSON
-        if (text.startsWith("<!DOCTYPE") || text.startsWith("<html")) {
-          console.error("❌ O backend retornou HTML em vez de JSON:", text.slice(0, 120));
-          setError("O servidor retornou uma resposta inválida (HTML em vez de JSON).");
-          setClinics([]);
+        if (clinicsJson.error || vetsJson.error) {
+          console.error('Erro na resposta:', { clinics: clinicsJson, vets: vetsJson });
+          setError(clinicsJson.error || vetsJson.error || 'Erro ao carregar prestadores.');
+          setAllProviders([]);
           return;
         }
 
-        let data: any;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          console.error("❌ Erro ao converter resposta em JSON:", text.slice(0, 120));
-          setError("Resposta inválida do servidor.");
-          setClinics([]);
-          return;
-        }
+        const clinics: Provider[] = Array.isArray(clinicsJson) ? clinicsJson.map((c: any) => ({ ...c, tipo: 'clinica' })) : [];
+        const vets: Provider[] = Array.isArray(vetsJson) ? vetsJson.map((v: any) => ({ ...v, tipo: 'veterinario' })) : [];
 
-        if (Array.isArray(data) && data.length > 0) {
-          setClinics(data);
-        } else {
-          setClinics([]);
-          setError("Nenhuma clínica encontrada próxima.");
-        }
+        setAllProviders([...clinics, ...vets]);
+        if ([...clinics, ...vets].length === 0) setError('Nenhum prestador encontrado próximo.');
       } catch (err) {
-        console.error("⚠️ Erro ao buscar clínicas:", err);
-        setError("Erro ao carregar clínicas próximas.");
+        console.error('Erro ao buscar prestadores:', err);
+        setError('Erro ao carregar prestadores próximos.');
+        setAllProviders([]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchClinics();
-  }, [isOpen, userLocation, visitaTipo]);
+    fetchProviders();
+  }, [isOpen, userLocation]);
 
   if (!isOpen) return null;
 
@@ -86,61 +111,88 @@ export default function ClinicSelectModal({
       <div className="bg-white rounded-xl shadow-lg w-full max-w-lg relative overflow-hidden">
         <div className="absolute top-0 right-0 w-28 h-28 bg-[#25A18E]/10 rounded-bl-full -z-10" />
         <div className="p-6">
-          {/* Cabeçalho */}
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold text-[#004E64] flex items-center gap-2">
               <Building2 className="w-5 h-5 text-[#25A18E]" />
-              Escolher Clínica
+              Escolher Prestador
             </h2>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
               <XCircle size={22} />
             </button>
           </div>
 
-          {/* Loading */}
+          <div className="flex gap-4 mb-4">
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value as any)}
+              className="flex-1 p-2 rounded border border-gray-200 text-sm"
+            >
+              <option value="todos">Todos</option>
+              <option value="clinicas">Apenas Clínicas</option>
+              <option value="veterinarios">Apenas Veterinários</option>
+            </select>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="flex-1 p-2 rounded border border-gray-200 text-sm"
+            >
+              <option value="distancia">Por Distância</option>
+              <option value="avaliacao">Por Avaliação</option>
+            </select>
+          </div>
+
           {loading && (
             <div className="flex justify-center py-6">
               <Loader2 className="w-6 h-6 animate-spin text-[#25A18E]" />
             </div>
           )}
 
-          {/* Erro */}
           {error && !loading && (
             <div className="text-center py-6 text-red-600 text-sm">{error}</div>
           )}
 
-          {/* Lista de Clínicas */}
-          {!loading && !error && clinics.length > 0 && (
+          {!loading && !error && filteredProviders.length > 0 && (
             <div className="space-y-3 max-h-[300px] overflow-y-auto">
-              {clinics.map((clinic) => (
+              {filteredProviders.map((provider) => (
                 <button
-                  key={clinic.id}
+                  key={provider.id}
                   onClick={() => {
-                    onSelect(clinic);
+                    onSelect(provider);
                     onClose();
                   }}
                   className="w-full flex justify-between items-center border border-gray-200 hover:border-[#25A18E] hover:bg-[#EAF9F5] transition rounded-lg p-3"
                 >
                   <div className="text-left">
-                    <h3 className="font-medium text-gray-800">{clinic.nome_fantasia}</h3>
+                    <div className="flex items-center gap-2">
+                      {provider.tipo === 'clinica' ? (
+                        <Building2 className="w-4 h-4 text-[#25A18E]" />
+                      ) : (
+                        <User className="w-4 h-4 text-[#25A18E]" />
+                      )}
+                      <h3 className="font-medium text-gray-800">
+                        {provider.tipo === 'clinica' ? provider.nome : provider.nome_completo}
+                      </h3>
+                    </div>
                     <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
                       <MapPin size={12} />
-                      {clinic.endereco || "Endereço não informado"}
+                      {provider.endereco || 'Endereço não informado'}
                     </p>
                   </div>
-                  <span className="text-xs text-[#25A18E] font-semibold">
-                    {clinic.distancia ? `${Math.round(clinic.distancia)} m` : "—"}
-                  </span>
+                  <div className="text-right">
+                    <span className="text-xs text-[#25A18E] font-semibold block">
+                      {provider.distancia ? `${Math.round(provider.distancia)} m` : '—'}
+                    </span>
+                    {(provider.avaliacao ?? 0) > 0 && (
+                      <span className="text-xs text-gray-500 block mt-1">⭐ {(provider.avaliacao ?? 0).toFixed(1)}</span>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
           )}
 
-          {/* Nenhuma clínica */}
-          {!loading && !error && clinics.length === 0 && (
-            <p className="text-center py-6 text-gray-500 text-sm">
-              Nenhuma clínica encontrada próxima.
-            </p>
+          {!loading && !error && filteredProviders.length === 0 && (
+            <p className="text-center py-6 text-gray-500 text-sm">Nenhum prestador encontrado próximo.</p>
           )}
         </div>
       </div>

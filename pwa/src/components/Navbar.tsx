@@ -1,19 +1,40 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Menu, X, PawPrint, User, LogOut } from "lucide-react";
+import { Menu, X, PawPrint, User, LogOut, HeartPulse } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { getToken, clearTokenFallback, getUser } from "../utils/auth";
+import AuthService from "../services/AuthService";
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
-
-  // Simulação de autenticação (substitua pelo seu contexto ou estado real)
-  const [user, setUser] = useState<{ name: string } | null>({
-    name: "Miguel",
-  });
+  const [user, setUser] = useState<{ name: string } | null>(null);
   const navigate = useNavigate();
 
+  // Efeito para verificar o estado de login
+  useEffect(() => {
+    const checkUser = () => {
+      const loggedInUser = getUser();
+      if (loggedInUser) {
+        setUser({ name: loggedInUser.name });
+      } else {
+        setUser(null);
+      }
+    };
+    
+    checkUser(); // Verifica ao carregar
+    
+    // Opcional: Ouve por mudanças no storage (login/logout em outra aba)
+    window.addEventListener('storage', checkUser);
+    return () => {
+      window.removeEventListener('storage', checkUser);
+    };
+  }, []);
+
+
   const handleLogout = () => {
-    setUser(null); // desloga o usuário
+    AuthService.logout(); // Usa o serviço para limpar o token
+    setUser(null); // Atualiza o estado local
+    setMenuOpen(false);
     navigate("/login"); // redireciona para login
   };
 
@@ -32,8 +53,10 @@ export default function Navbar() {
     }),
   };
 
+  // Links atualizados para incluir a nova página
   const navLinks = [
     { label: "Home", path: "/" },
+    { label: "Clínicas", path: "/registeredClinicPage" },
     { label: "Funcionalidades", path: "/features" },
     { label: "Sobre Nós", path: "/about" },
   ];
@@ -47,30 +70,44 @@ export default function Navbar() {
       </Link>
 
       {/* Menu Desktop */}
-      <div className="hidden md:flex items-center gap-10 text-lg">
+      <div className="hidden md:flex items-center gap-4 text-lg">
         {navLinks.map(({ label, path }) => (
           <Link
             key={path}
             to={path}
-            className="text-[#004E64] font-semibold hover:text-[#25A18E] transition-colors duration-200"
+            className="text-[#004E64] font-semibold hover:text-[#25A18E] transition-colors duration-200 text-base"
           >
             {label}
           </Link>
         ))}
 
         {user ? (
-          <button
-            onClick={handleLogout}
-            className="bg-[#25A18E] w-12 h-12 rounded-full flex items-center justify-center text-white hover:bg-[#208B7C] transition-colors"
-          >
-            <LogOut size={24} />
-          </button>
+          <div className="flex items-center gap-4">
+            {/* ✅ Logado: Botão Dashboard com cor de projeto */}
+            <Link
+              to="/dashboard"
+              className="flex items-center px-4 py-2 bg-[#25A18E] text-white rounded-lg font-semibold hover:bg-[#208B7C] transition-colors duration-200 text-base"
+              title="Ir para o Dashboard"
+            >
+              Dashboard
+            </Link>
+            {/* ✅ Logado: Botão de Sair (ícone) */}
+            <button
+              onClick={handleLogout}
+              className="bg-[#25A18E] w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-[#208B7C] transition-colors"
+              title="Sair"
+            >
+              <LogOut size={20} />
+            </button>
+          </div>
         ) : (
+          /* ✅ Deslogado: Botão Entrar com cor de projeto */
           <Link
             to="/login"
-            className="bg-[#25A18E] w-12 h-12 rounded-full flex items-center justify-center text-white hover:bg-[#208B7C] transition-colors"
+            className="flex items-center px-4 py-2 bg-[#25A18E] text-white rounded-lg font-semibold hover:bg-[#208B7C] transition-colors duration-200 text-base"
+            title="Entrar"
           >
-            <User size={24} />
+            Entrar
           </Link>
         )}
       </div>
@@ -114,18 +151,26 @@ export default function Navbar() {
 
             {user ? (
               <motion.div
+                className="flex flex-col items-center gap-4 mt-4"
                 variants={itemVariants}
                 initial="hidden"
                 animate="visible"
                 exit="hidden"
-                custom={3}
+                custom={navLinks.length}
               >
+                 {/* ✅ Menu Mobile - Dashboard (link de texto) */}
+                 <Link
+                  to="/dashboard"
+                  onClick={() => setMenuOpen(false)}
+                  className="font-semibold hover:text-[#25A18E] transition-colors text-xl p-2"
+                  title="Ir para o Dashboard"
+                >
+                  Dashboard
+                </Link>
                 <button
-                  onClick={() => {
-                    handleLogout();
-                    setMenuOpen(false);
-                  }}
+                  onClick={handleLogout}
                   className="bg-[#25A18E] w-12 h-12 rounded-full flex items-center justify-center text-white hover:bg-[#208B7C] transition-colors"
+                  title="Sair"
                 >
                   <LogOut size={24} />
                 </button>
@@ -136,14 +181,16 @@ export default function Navbar() {
                 initial="hidden"
                 animate="visible"
                 exit="hidden"
-                custom={3}
+                custom={navLinks.length}
               >
+                 {/* ✅ Menu Mobile - Entrar (link de texto) */}
                 <Link
                   to="/login"
                   onClick={() => setMenuOpen(false)}
-                  className="bg-[#25A18E] w-12 h-12 rounded-full flex items-center justify-center text-white hover:bg-[#208B7C] transition-colors"
+                  className="font-semibold hover:text-[#25A18E] transition-colors text-xl p-2"
+                  title="Entrar"
                 >
-                  <User size={24} />
+                  Entrar
                 </Link>
               </motion.div>
             )}

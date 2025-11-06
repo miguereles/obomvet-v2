@@ -1,6 +1,8 @@
 // src/hooks/useAudioRecording.ts
 import { useState, useRef } from "react";
-import { transcribeAudio } from "../services/apiService";
+// ❌ import { transcribeAudio } from "../services/apiService";
+// ✅ 1. Importe o Service correto
+import IaService from "../services/IaService";
 
 export function useAudioRecording(token: string | null) {
   const [isRecording, setIsRecording] = useState(false);
@@ -52,14 +54,18 @@ export function useAudioRecording(token: string | null) {
         }
 
         const formDataAudio = new FormData();
-        const filename = `audio.${mimeType.split("/")[1].split(";")[0]}`;
+        const filename = `audio.${mimeType.split("/")[1].split(";")[0] || 'webm'}`;
         formDataAudio.append("file", audioBlob, filename);
 
         try {
           setIsTranscribing(true);
           setAudioError(null);
           console.log("Enviando áudio para transcrição...");
-          const text = await transcribeAudio(formDataAudio, token);
+          
+          // ✅ 2. Use o IaService
+          // O token é injetado automaticamente pelo 'api.ts'
+          const text = await IaService.transcribeAudio(formDataAudio);
+
           console.log("Transcrição ok:", text);
           setTranscribedText(text);
         } catch (err: any) {

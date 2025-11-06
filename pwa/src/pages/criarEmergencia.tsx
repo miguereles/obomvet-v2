@@ -54,6 +54,7 @@ export default function ReportInput() {
     handleSubmit,
     closeModal,
     validateForm,
+    editTokens,
   } = useEmergencyReport(token);
 
   // Handler para o <form>
@@ -485,6 +486,7 @@ export default function ReportInput() {
         clinica={clinica}
         report={report}
         lastVisitaTipo={lastVisitaTipo}
+        editTokens={editTokens}
         userLocation={location}
         onSetError={setError}
       />
@@ -494,7 +496,7 @@ export default function ReportInput() {
         isOpen={showClinicModal}
         onClose={() => setShowClinicModal(false)}
         onSelect={handleClinicSelectAndSubmit}
-        visitaTipo={visitaTipo}
+        visitaTipo={visitaTipo ?? 'clinica'}
         userLocation={
           location ? { lat: location.latitude, lng: location.longitude } : null
         }

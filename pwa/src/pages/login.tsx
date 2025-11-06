@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { setTokenFallback , setUserFallback} from '../utils/auth';
 import { ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
+// ✅ 1. Importe o seu novo service
+import AuthService from "../services/AuthService";
+// ❌ Funções de auth não são mais necessárias aqui
+// import { setTokenFallback, setUserFallback } from "../utils/auth"; 
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -10,36 +13,41 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
   async function solicitarPermissao() {
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
       console.log("Usuário autorizou notificações.");
     }
   }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
     try {
-      const res = await fetch("http://localhost:8000/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+      // ✅ 2. Use o AuthService para fazer o login
+      // A lógica de salvar no localStorage já está DENTRO do AuthService.login()
+      const data = await AuthService.login({ email, password });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Erro no login");
-      }
+      console.info("Resposta do login:", data);
 
-      const data = await res.json();
-      setTokenFallback(data.access_token);
-      setUserFallback(data)
+      // ✅ 3. Apenas solicite permissão e navegue
       solicitarPermissao();
       navigate("/dashboard");
+
     } catch (err: any) {
-      setError(err.message);
+      // ✅ 4. Trate o erro do Axios
+      // O interceptor em 'api.ts' trata o 401 (Não autenticado)
+      // Aqui tratamos outros erros, como 422 (Validação) ou 500
+      console.error("Erro no handleSubmit do Login:", err);
+      const errorMsg = err.response?.data?.message || err.message || "Erro ao fazer login.";
+      setError(errorMsg);
+      // Se o erro for de credenciais inválidas (do AuthController)
+      if (errorMsg.includes("Credenciais inválidas")) {
+        setError("Email ou senha incorretos.");
+      }
     } finally {
       setLoading(false);
     }
@@ -117,12 +125,9 @@ export default function Login() {
           </motion.button>
         </form>
 
-        <p className="mt-6 text-center text-white">
+        <p className="mt-6 text-center text-gray-600">
           Não tem conta?{" "}
-          <Link
-            to="/register"
-            className="font-semibold underline"
-          >
+          <Link to="/register" className="font-semibold underline text-[#004E64]">
             Cadastre-se
           </Link>
         </p>

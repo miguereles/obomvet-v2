@@ -16,6 +16,8 @@ return [
         'broadcasting/auth',
         'sanctum/csrf-cookie',
         'push/*',
+        'save-subscription', 
+        'send-push'
     ],
 
     /*
@@ -39,9 +41,9 @@ return [
     |
     */
     'allowed_origins' => ['http://localhost:5173',
-                         'http://127.0.0.1:5173',
+                         'http://localhost:5173',
                          'https://localhost:8000',
-                         'https://127.0.0.1:8000'],
+                         'https://localhost:8000'],
 
     /*
     |--------------------------------------------------------------------------
@@ -61,8 +63,12 @@ return [
     | Cabeçalhos permitidos na requisição. Use ['*'] para todos.
     |
     */
-    'allowed_headers' => ['*'],
-
+'allowed_headers' => [
+        'Content-Type',
+        'Accept',
+        'Authorization',
+        'X-Requested-With', 
+    ],
     /*
     |--------------------------------------------------------------------------
     | Exposed Headers

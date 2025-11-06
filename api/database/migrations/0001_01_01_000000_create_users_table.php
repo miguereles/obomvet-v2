@@ -12,25 +12,18 @@ return new class extends Migration
     public function up(): void
     {
 
-        Schema::create('usuarios', function (Blueprint $table) {
+         Schema::create('usuarios', function (Blueprint $table) {
             $table->id();
-            $table->string('nome_completo');
             $table->string('name');
+            $table->string('nome_completo')->nullable();
             $table->string('email')->unique();
-            $table->string('cpf')->unique()->nullable();
-            $table->string('cnpj')->unique()->nullable();
-            $table->string('nome_fantasia')->nullable();
-            $table->string('razao_social')->nullable();
-            $table->string('endereco')->nullable();
-            $table->string('telefone_principal');
-            $table->string('telefone_alternativo')->nullable();
-            $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
-            $table->enum('tipo', ['tutor', 'veterinario', 'clinica', 'admin'])->default('tutor');
+            $table->string('tipo')->default('tutor');
+            $table->string('telefone_principal')->nullable();
+            $table->string('telefone_alternativo')->nullable();
             $table->rememberToken();
             $table->timestamps();
         });
-
         Schema::create('password_reset_tokens', function (Blueprint $table) {
             $table->string('email')->primary();
             $table->string('token');

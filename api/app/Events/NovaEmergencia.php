@@ -18,13 +18,19 @@ class NovaEmergencia implements ShouldBroadcast
 
     public function __construct(Emergencia $emergencia)
     {
-         $this->emergencia = $emergencia;
+        $this->emergencia = $emergencia;
     }
 
     public function broadcastOn()
     {
-        return new PrivateChannel('clinicas');
+        // Broadcast to a per-clinic private channel when possible so only the target clinic receives the event.
+        $channel = 'clinicas';
+        if ($this->emergencia && $this->emergencia->clinica_id) {
+            $channel = 'clinicas.' . $this->emergencia->clinica_id;
+        }
+        return new PrivateChannel($channel);
     }
+
     public function broadcastAs() 
     { 
         return 'NovaEmergencia'; 
@@ -35,6 +41,9 @@ class NovaEmergencia implements ShouldBroadcast
         return [
             'id' => $this->emergencia->id,
             'descricao_sintomas' => $this->emergencia->descricao_sintomas,
+            'status' => $this->emergencia->status,
+            'clinica_id' => $this->emergencia->clinica_id,
+            'veterinario_id' => $this->emergencia->veterinario_id,
             'criado_em' => $this->emergencia->created_at,
         ];
     }

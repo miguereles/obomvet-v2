@@ -9,6 +9,7 @@ interface SuccessModalProps {
   lastVisitaTipo: VisitaTipo | null;
   userLocation: Location | null;
   onSetError: (error: string | null) => void;
+  editTokens?: { tutor?: string; pet?: string } | null;
 }
 
 export default function SuccessModal({
@@ -19,6 +20,7 @@ export default function SuccessModal({
   lastVisitaTipo,
   userLocation,
   onSetError,
+  editTokens = null,
 }: SuccessModalProps) {
   function handleAbrirRota() {
     onSetError(null);
@@ -113,6 +115,24 @@ export default function SuccessModal({
                 }
               `}</style>
             </div>
+            {editTokens && (editTokens.pet || editTokens.tutor) && (
+              <div className="mt-4 bg-yellow-50 border border-yellow-200 p-3 rounded text-sm">
+                <h4 className="font-semibold text-yellow-800 mb-2">Códigos de edição (anon)</h4>
+                {editTokens.tutor && (
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="break-words">Tutor token: <code className="bg-white px-2 py-1 rounded">{editTokens.tutor}</code></div>
+                    <button onClick={() => { navigator.clipboard?.writeText(editTokens.tutor || ''); onSetError('Token copiado para a área de transferência'); setTimeout(()=>onSetError(null),2500); }} className="ml-2 text-sm text-yellow-800 underline">Copiar</button>
+                  </div>
+                )}
+                {editTokens.pet && (
+                  <div className="flex items-center justify-between">
+                    <div className="break-words">Pet token: <code className="bg-white px-2 py-1 rounded">{editTokens.pet}</code></div>
+                    <button onClick={() => { navigator.clipboard?.writeText(editTokens.pet || ''); onSetError('Token copiado para a área de transferência'); setTimeout(()=>onSetError(null),2500); }} className="ml-2 text-sm text-yellow-800 underline">Copiar</button>
+                  </div>
+                )}
+                <p className="text-xs text-yellow-700 mt-2">Guarde esses códigos para editar/excluir o registro sem conta. Expiram em 7 dias.</p>
+              </div>
+            )}
           </>
         ) : (
           <>

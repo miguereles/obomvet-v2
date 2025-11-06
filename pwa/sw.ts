@@ -1,25 +1,48 @@
 /// <reference lib="webworker" />
 
+self.addEventListener("push", function (event: any) {
+  let data = { title: "Notificação", body: "Nova notificação", data: { url: "/" } };
 
-self.addEventListener("push", function (event) {
-  const data = event.data.json();
+  try {
+    if (event.data) {
+      data = event.data.json();
+    }
+  } catch (e) {
+    // se o payload não for JSON, use texto
+    try {
+      const text = event.data.text();
+      data.body = text;
+    } catch (err) {
+      // ignore
+    }
+  }
+
   const options = {
     body: data.body || "Nova notificação",
     icon: "/icons/icon-192x192.png",
     badge: "/icons/icon-72x72.png",
     data: data.data || {},
     vibrate: [200, 100, 200],
-    requireInteraction: true,
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || "Notificação", options)
+    (self as any).registration.showNotification(data.title || "Notificação", options)
   );
 });
 
-// Clicar na notificação abre a URL
-self.addEventListener("notificationclick", function (event) {
+self.addEventListener("notificationclick", function (event: any) {
   event.notification.close();
-  event.waitUntil(clients.openWindow(event.notification.data.url || "/"));
+  const url = event.notification.data?.url || "/";
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList: any) => {
+      for (const client of clientList) {
+        if (client.url === url && "focus" in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(url);
+      }
+    })
+  );
 });
-

@@ -19,10 +19,21 @@ class Veterinario extends Model
         'especialidade',
         'telefone_emergencia',
         'disponivel_24h',
+        'autonomo',
+        'area_atuacao',
+        'endereco',
+        'lat',
+        'lng',
+        'descricao', // NOVO: Adicionado aqui
+        'foto_url', // NOVO: Adicionado aqui
     ];
 
     protected $casts = [
         'disponivel_24h' => 'boolean',
+        'autonomo' => 'boolean',
+        'area_atuacao' => 'array',
+        'lat' => 'float',
+        'lng' => 'float',
     ];
 
     public function user()

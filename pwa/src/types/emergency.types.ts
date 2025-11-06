@@ -30,8 +30,3 @@ export type VisitaTipo = "clinica" | "domicilio";
 
 export const URGENCIAS = ["baixa", "media", "alta", "critica"] as const;
 
-// Interface para o formato do Pet que você usa no estado
-export interface Pet {
-  id: string;
-  nome: string;
-}
