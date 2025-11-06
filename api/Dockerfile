@@ -3,16 +3,17 @@ FROM php:8.2-apache
 
 # 2. Instalar Ferramentas e Extensões
 # BLOCO NOVO (CORRIGIDO)
-RUN apt-get update && apt-get install -y \
+# BLOCO CORRIGIDO (VERSÃO FINAL)
+RUN apt-get update && \
+    apt-get install -y \
      libzip-dev \
      unzip \
      git \
      nodejs \
      npm \
-     libpq-dev \  # <-- Dependência para o PostgreSQL
-     && docker-php-ext-install pdo pdo_pgsql opcache \ # <-- Extensão correta
-     && a2enmod rewrite
-
+     libpq-dev \
+  && docker-php-ext-install pdo pdo_pgsql opcache \
+  && a2enmod rewrite
 # 3. Instalar Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
