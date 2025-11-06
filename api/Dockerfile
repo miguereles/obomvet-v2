@@ -22,7 +22,16 @@ WORKDIR /var/www/html/
 
 # 5. Copiar o Código
 # CORREÇÃO: Copia o conteúdo do diretório atual (api/)
-COPY . /var/www/html/
+# ... (outras coisas acima)
+
+# 4. Copiar código-fonte
+COPY . /var/www/html
+
+# NOVO: Copia a configuração do Apache para apontar para /public
+COPY 000-default.conf /etc/apache2/sites-available/000-default.conf
+
+# 5. Instalar dependências (PHP e Node)
+# ... (o resto do arquivo) ...
 
 # 6. Copiar o Script de Entrada (Entrypoint)
 COPY entrypoint.sh /usr/local/bin/
