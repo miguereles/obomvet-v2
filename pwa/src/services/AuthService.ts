@@ -1,7 +1,8 @@
 import api from './api';
 import { LoginResponse, RegisterResponse } from './types';
 // Importamos suas funções utilitárias para salvar no localStorage
-import { setTokenFallback, setUserFallback } from '../utils/auth';
+import { setTokenFallback, setUserFallback, clearTokenFallback } from '../utils/auth';
+import { setBroadcastToken } from './echo';
 
 const AuthService = {
   
@@ -12,13 +13,21 @@ const AuthService = {
   login: async (credentials: { email: string, password: string }): Promise<LoginResponse> => {
     
     // O 'api.post' já usa a baseURL (http://.../api)
-    const { data } = await api.post<LoginResponse>('/auth/login', credentials);
+  // Make the login request
+  const { data } = await api.post<LoginResponse>('/auth/login', credentials);
     
     // Se o login for bem-sucedido, salvamos os dados
-    if (data.access_token) {
+      if (data.access_token) {
       // Usamos as mesmas funções que seu login.tsx usava
       setTokenFallback(data.access_token);
       setUserFallback(data);
+      // Also update the broadcast token used by the Echo authorizer so private
+      // channel auth uses the freshest token without waiting for a page reload.
+      try {
+        setBroadcastToken(data.access_token);
+      } catch (e) {
+        // noop in non-browser/test environments
+      }
     }
     return data;
   },
@@ -46,6 +55,9 @@ const AuthService = {
     } finally {
         // Limpa o storage local de qualquer maneira
         clearTokenFallback(); // do seu utils/auth.ts
+        try {
+          setBroadcastToken(null);
+        } catch (e) {}
     }
   },
 

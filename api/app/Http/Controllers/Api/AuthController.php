@@ -10,6 +10,11 @@ use Illuminate\Auth\Events\Registered;
 use PHPOpenSourceSaver\JWTAuth\Facades\JWTAuth;
 use PHPOpenSourceSaver\JWTAuth\Exceptions\JWTException;
 use Illuminate\Validation\ValidationException;
+// ✅ IMPORTS ADICIONADOS
+use Illuminate\Support\Facades\Log;
+use App\Models\Tutor;
+use App\Models\Pet;
+use App\Models\Emergencia;
 
 class AuthController extends Controller
 {
@@ -135,6 +140,9 @@ class AuthController extends Controller
 
             event(new Registered($user));
 
+            // ✅ LÓGICA DE REIVINDICAÇÃO ADICIONADA AQUI
+            $this->reclaimAnonymousData($user);
+
             $token = JWTAuth::fromUser($user);
 
             // Carregamos o relacionamento baseado no tipo
@@ -247,5 +255,41 @@ class AuthController extends Controller
     public function me()
     {
         return response()->json(auth()->user());
+    }
+
+    // ✅ NOVA FUNÇÃO ADICIONADA
+    /**
+     * Transfere dados de um tutor anônimo (por e-mail) para um novo usuário tutor.
+     */
+    private function reclaimAnonymousData(Usuario $user)
+    {
+        // Só executa se o novo usuário for um tutor
+        if ($user->tipo !== 'tutor' || !$user->tutor) {
+            return;
+        }
+
+        $newTutor = $user->tutor;
+        $email = $user->email;
+
+        // Procura por um tutor anônimo (sem usuario_id) com o mesmo e-mail de contato
+        $anonymousTutor = Tutor::where('email_contato', $email)
+                               ->whereNull('usuario_id')
+                               ->first();
+
+        // Se encontrou um tutor anônimo correspondente
+        if ($anonymousTutor) {
+            Log::info("Reivindicando dados anônimos para o novo usuário {$user->id} (Tutor: {$newTutor->id}) a partir do tutor anônimo {$anonymousTutor->id}");
+
+            // 1. Transfere os Pets
+            Pet::where('tutor_id', $anonymousTutor->id)
+               ->update(['tutor_id' => $newTutor->id]);
+
+            // 2. Transfere as Emergências
+            Emergencia::where('tutor_id', $anonymousTutor->id)
+                      ->update(['tutor_id' => $newTutor->id]);
+
+            // 3. Remove o tutor anônimo
+            $anonymousTutor->delete();
+        }
     }
 }

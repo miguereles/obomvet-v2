@@ -63,8 +63,8 @@ export default function ClinicaDashboard({ user, onLogout }: any) {
     transition: { duration: 0.3 }
   };
 
-  return (
-    <DashboardLayout sidebar={sidebar}>
+  return (
+    <DashboardLayout sidebar={sidebar} user={user} onLogout={onLogout}>
       <div className="space-y-6">
         <AnimatePresence mode="wait">
           {activeSection === "home" && (

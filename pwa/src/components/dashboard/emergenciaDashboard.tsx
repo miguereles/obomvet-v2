@@ -1,136 +1,61 @@
-import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { PawPrint, Plus, Trash2, Edit2, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { motion } from "framer-motion";
+import { HeartPulse, CheckCircle, Shield, AlertTriangle, ArrowRight } from "lucide-react";
 
-interface Emergency {
-  id: number;
-  pet_nome: string;
-  descricao_sintomas: string;
-  nivel_urgencia: "baixa" | "media" | "alta" | "critica";
-  status: "aberta" | "em_atendimento" | "concluida" | "cancelada";
-  data_abertura: string;
-}
-
-export default function EmergencyDashboardPage() {
+export default function EmergenciaDashboard() {
   const navigate = useNavigate();
-  const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
-
-  const [emergencias, setEmergencias] = useState<Emergency[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      navigate("/login");
-      return;
-    }
-
-    async function fetchEmergencias() {
-      setLoading(true);
-      setError("");
-      try {
-        const res = await fetch(`${API_URL}/api/minhas-emergencias`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error("Erro ao buscar emergências");
-        const data = await res.json();
-        setEmergencias(Array.isArray(data) ? data : data.data || []);
-      } catch (err: any) {
-        console.error(err);
-        setError(err.message || "Erro inesperado");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchEmergencias();
-  }, [API_URL, navigate]);
-
-  const handleDelete = async (id: number) => {
-    if (!confirm("Deseja realmente excluir esta emergência?")) return;
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    try {
-      const res = await fetch(`${API_URL}/api/emergencias/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Erro ao excluir emergência");
-      setEmergencias((prev) => prev.filter((e) => e.id !== id));
-    } catch (err: any) {
-      alert(err.message || "Erro ao excluir emergência");
-    }
-  };
-
-  if (loading) return <p className="p-6 text-center">Carregando emergências...</p>;
 
   return (
-    <div className="min-h-screen p-6 bg-gray-50">
-      <div className="max-w-5xl mx-auto bg-white shadow-xl rounded-xl p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold flex items-center gap-3 text-gray-800">
-            <PawPrint size={28} /> Emergências
-          </h1>
-          <button
-            onClick={() => navigate("/reportInput")}
-            className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition"
-          >
-            <AlertTriangle size={18} /> Chamar Emergência
-          </button>
+    <motion.div
+      key="emergency-bridge"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.3 }}
+      className="mt-6"
+    >
+      {/* === ESTE É O NOVO COMPONENTE "PONTE" === */}
+      <div className="bg-white rounded-xl shadow-lg border border-red-200 p-8 flex flex-col items-center text-center">
+        
+        {/* Ícone Principal */}
+        <div className="p-4 bg-red-100 rounded-full mb-4 ring-4 ring-red-50">
+          <AlertTriangle size={40} className="text-red-600" />
         </div>
+        
+        {/* Título Convidativo */}
+        <h2 className="text-2xl font-bold text-gray-800 mb-3">
+          Relatar uma Nova Emergência
+        </h2>
+        
+        {/* Texto Intuitivo */}
+        <p className="text-gray-600 max-w-md mb-6">
+          Se o seu pet está precisando de atendimento imediato, clique no botão abaixo. 
+          Você será levado ao formulário para descrever os sintomas e notificar a clínica mais próxima.
+        </p>
 
-        {error && (
-          <div className="flex items-center gap-2 text-red-600 text-sm mb-3">
-            <AlertTriangle size={18} /> {error}
+        {/* Checklist de Preparação */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 w-full text-left mb-8 space-y-3">
+          <h3 className="text-lg font-semibold text-[#004E64] mb-3">Antes de começar:</h3>
+          <div className="flex items-start gap-3">
+            <Shield size={20} className="text-blue-600 flex-shrink-0 mt-1" />
+            <p className="text-gray-700"><strong>Local Seguro:</strong> Garanta que você e seu pet estão em um local seguro.</p>
           </div>
-        )}
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 rounded-lg overflow-hidden shadow-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Pet</th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Sintomas</th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Urgência</th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Status</th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Data</th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {emergencias.map((e) => (
-                <tr key={e.id} className="hover:bg-gray-50 transition">
-                  <td className="px-6 py-4">{e.pet_nome}</td>
-                  <td className="px-6 py-4">{e.descricao_sintomas.slice(0, 30)}...</td>
-                  <td className="px-6 py-4">{e.nivel_urgencia}</td>
-                  <td className="px-6 py-4">{e.status}</td>
-                  <td className="px-6 py-4">{new Date(e.data_abertura).toLocaleDateString()}</td>
-                  <td className="px-6 py-4 flex gap-2">
-                    <button
-                      onClick={() => navigate(`/report-input?edit=${e.id}`)}
-                      className="text-blue-500 hover:text-blue-700"
-                    >
-                      <Edit2 size={18} />
-                    </button>
-                    <button onClick={() => handleDelete(e.id)} className="text-red-500 hover:text-red-700">
-                      <Trash2 size={18} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {emergencias.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
-                    Nenhuma emergência registrada.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <div className="flex items-start gap-3">
+            <CheckCircle size={20} className="text-blue-600 flex-shrink-0 mt-1" />
+            <p className="text-gray-700"><strong>Descreva os Sintomas:</strong> Tente observar o que aconteceu. Você poderá gravar um áudio ou digitar.</p>
+          </div>
         </div>
+        
+        {/* Botão de Ação Principal */}
+        <motion.button
+          onClick={() => navigate("/reportInput")} // Navega para o formulário
+          className="flex items-center justify-center gap-3 w-full sm:w-auto px-10 py-4 bg-red-600 text-white rounded-xl font-bold text-lg hover:bg-red-700 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <HeartPulse size={22} /> Iniciar Relatório
+        </motion.button>
       </div>
-    </div>
+    </motion.div>
   );
 }

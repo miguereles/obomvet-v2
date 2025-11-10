@@ -1,10 +1,16 @@
 import axios, { InternalAxiosRequestConfig } from 'axios';
 import { clearTokenFallback } from '../utils/auth'; // Importa sua função de limpar
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = `${import.meta.env.VITE_API_URL}/api`;
 const api = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true,
+  // Do not send browser credentials by default. This project uses JWT in
+  // Authorization header stored in localStorage, so cookies are not required.
+  // Sending credentials (withCredentials: true) forces requests into the
+  // 'include' credentials mode and requires the server to return a specific
+  // Access-Control-Allow-Origin header (not '*'), which has caused CORS
+  // failures during local development. Keep false unless you rely on cookies.
+  withCredentials: false,
   headers: {
     'Accept': 'application/json',
     'Content-Type': 'application/json',

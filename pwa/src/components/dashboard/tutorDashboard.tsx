@@ -71,7 +71,7 @@ export default function TutorDashboard({ user, onLogout }: any) {
   );
 
   return (
-    <DashboardLayout sidebar={sidebar}>
+    <DashboardLayout sidebar={sidebar} user={user} onLogout={onLogout}>
       {/* Tooltip animado */}
       <AnimatePresence>
         {tooltip.visible && (

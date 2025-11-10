@@ -1,6 +1,3 @@
-// ⚠️ Helper para centralizar leitura/gravação de token e usuário
-// Prioriza cookie HttpOnly se existir, fallback para localStorage
-
 export function getTokenFromCookie(): string | null {
   if (typeof document === 'undefined') return null;
   const match = document.cookie.match(new RegExp('(^| )' + 'token' + '=([^;]+)'));
@@ -20,15 +17,23 @@ export function getToken(): string | null {
   return getTokenFromCookie() || getTokenFromLocalStorage();
 }
 
-export function getUser(): { id: string; name: string; email: string; tipo: "tutor" | "veterinario" | "clinica" } | null {
+export function getUser(): { 
+  id: string; 
+  name: string; 
+  email: string; 
+  tipo: "tutor" | "veterinario" | "clinica";
+  tutor_id: string | null; 
+} | null {
   try {
     if (typeof localStorage === 'undefined') return null;
     const id = localStorage.getItem('id');
     const name = localStorage.getItem('name');
     const email = localStorage.getItem('email');
     const tipo = localStorage.getItem('tipo') as "tutor" | "veterinario" | "clinica" | null;
+    const tutor_id = localStorage.getItem('tutor_id');
+    
     if (id && name && email && tipo) {
-      return { id, name, email, tipo };
+      return { id, name, email, tipo, tutor_id };
     }
     return null;
   } catch (e) {
@@ -50,6 +55,13 @@ export function clearTokenFallback() {
   try {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem('token');
+      localStorage.removeItem('id');
+      localStorage.removeItem('name');
+      localStorage.removeItem('email');
+      localStorage.removeItem('tipo');
+      localStorage.removeItem('tutor_id');
+      localStorage.removeItem('clinica_id');
+      localStorage.removeItem('veterinario_id');
     }
     if (typeof document !== 'undefined') {
       document.cookie = 'token=; Max-Age=0; path=/;';
@@ -68,13 +80,11 @@ export function setUserFallback(data: {
 }) {
   try {
     if (typeof localStorage !== 'undefined') {
-      // Dados básicos do usuário
       localStorage.setItem('id', data.id.toString());
       localStorage.setItem('name', data.name);
       localStorage.setItem('email', data.email);
       localStorage.setItem('tipo', data.tipo);
 
-      // IDs específicos por tipo
       if (data.tipo === 'clinica' && data.clinica_id) {
         localStorage.setItem('clinica_id', data.clinica_id.toString());
       }
@@ -84,15 +94,6 @@ export function setUserFallback(data: {
       if (data.tipo === 'tutor' && data.tutor_id) {
         localStorage.setItem('tutor_id', data.tutor_id.toString());
       }
-
-      // Log para debug
-      console.info('Dados do usuário armazenados:', {
-        id: data.id,
-        tipo: data.tipo,
-        clinica_id: data.clinica_id,
-        veterinario_id: data.veterinario_id,
-        tutor_id: data.tutor_id
-      });
     }
   } catch (e) {}
 }
@@ -104,6 +105,9 @@ export function clearUserFallback() {
       localStorage.removeItem('name');
       localStorage.removeItem('email');
       localStorage.removeItem('tipo');
+      localStorage.removeItem('tutor_id');
+      localStorage.removeItem('clinica_id');
+      localStorage.removeItem('veterinario_id');
     }
   } catch (e) {}
 }

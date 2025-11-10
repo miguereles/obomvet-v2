@@ -132,6 +132,8 @@ export default function Login() {
           </Link>
         </p>
       </motion.div>
+      
     </motion.div>
+    
   );
 }

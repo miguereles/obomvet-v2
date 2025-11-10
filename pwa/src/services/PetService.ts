@@ -1,7 +1,8 @@
 import api from './api';
 import { Pet } from './types';
 
-const PetService = {
+// ✅ CORREÇÃO: Alterado de 'const' para 'export const'
+export const PetService = {
 
   /**
    * Cria um novo pet (logado ou anônimo).
@@ -34,4 +35,5 @@ const PetService = {
   }
 };
 
-export default PetService;
+// ❌ CORREÇÃO: O 'export default' é removido
+// export default PetService;

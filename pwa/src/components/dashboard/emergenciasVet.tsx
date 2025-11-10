@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MapPin, Phone, MessageCircle, CheckCircle, XCircle, Loader2 } from 'lucide-react';
-import Echo from 'laravel-echo';
+import { echo } from '../../services/echo';
 
 interface Emergencia {
   id: number;
@@ -91,23 +91,10 @@ export default function EmergenciasVet() {
   useEffect(() => {
     fetchEmergencias();
 
-    // Configurar Echo para atualizações em tempo real
-    const token = localStorage.getItem('token');
+    // Configure subscriptions using the shared Echo instance (centralized authorizer)
     const veterinarioId = localStorage.getItem('veterinario_id');
 
-    if (token && veterinarioId) {
-      const echo = new Echo({
-        broadcaster: 'pusher',
-        key: process.env.VITE_PUSHER_APP_KEY,
-        cluster: process.env.VITE_PUSHER_APP_CLUSTER,
-        forceTLS: true,
-        auth: {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      });
-
+    if (veterinarioId) {
       echo.private(`veterinario.${veterinarioId}`)
         .listen('.emergencia.nova', (e: Emergencia) => {
           setEmergencias(prev => [e, ...prev]);
@@ -117,7 +104,15 @@ export default function EmergenciasVet() {
         });
 
       return () => {
-        echo.leave(`veterinario.${veterinarioId}`);
+        // Defensive: attempt to leave the channel on unmount
+        try {
+          echo.leave(`veterinario.${veterinarioId}`);
+        } catch (err) {
+          // swallow errors during unmount to avoid noisy crashes
+          // these will be visible in console for debugging
+          // eslint-disable-next-line no-console
+          console.warn('Failed to leave echo channel', err);
+        }
       };
     }
   }, []);

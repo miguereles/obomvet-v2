@@ -1,13 +1,15 @@
 // src/hooks/useAudioRecording.ts
 import { useState, useRef } from "react";
-// ❌ import { transcribeAudio } from "../services/apiService";
 // ✅ 1. Importe o Service correto
 import IaService from "../services/IaService";
+// ✅ 2. Importe o tipo de Resposta da IA
+import { AIResponse } from "../types/emergency.types";
 
 export function useAudioRecording(token: string | null) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [transcribedText, setTranscribedText] = useState("");
+  // ✅ 3. Altere 'transcribedText' para 'aiResponseFromAudio'
+  const [aiResponseFromAudio, setAiResponseFromAudio] = useState<AIResponse | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -16,7 +18,8 @@ export function useAudioRecording(token: string | null) {
 
   const startRecording = async () => {
     setAudioError(null);
-    setTranscribedText("");
+    // ✅ 4. Limpe a resposta da IA
+    setAiResponseFromAudio(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -60,14 +63,14 @@ export function useAudioRecording(token: string | null) {
         try {
           setIsTranscribing(true);
           setAudioError(null);
-          console.log("Enviando áudio para transcrição...");
+          console.log("Enviando áudio para transcrição e análise...");
           
-          // ✅ 2. Use o IaService
-          // O token é injetado automaticamente pelo 'api.ts'
-          const text = await IaService.transcribeAudio(formDataAudio);
+          // ✅ 5. Use o IaService (que agora retorna AIResponse)
+          const aiResponse = await IaService.transcribeAudio(formDataAudio);
 
-          console.log("Transcrição ok:", text);
-          setTranscribedText(text);
+          console.log("Resposta da IA (áudio) ok:", aiResponse);
+          // ✅ 6. Salve o objeto JSON completo
+          setAiResponseFromAudio(aiResponse);
         } catch (err: any) {
           console.error("Erro onstop/transcrição:", err);
           setAudioError(err.message || "Erro ao processar áudio.");
@@ -124,10 +127,10 @@ export function useAudioRecording(token: string | null) {
   return {
     isRecording,
     isTranscribing,
-    transcribedText,
-    setTranscribedText, // Expor para o 'useEffect' de sincronia
-    audioError,
+    // ✅ 7. Exponha o objeto de resposta da IA
+    aiResponseFromAudio,
     setAudioError, // Expor para o 'analyzeText' poder limpar
+    audioError,
     startRecording,
     stopRecording,
   };

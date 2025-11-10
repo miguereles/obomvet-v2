@@ -10,35 +10,112 @@ const VITE_API_URL = (import.meta as any).env.VITE_API_URL || 'http://127.0.0.1:
 const VITE_PUSHER_APP_KEY = (import.meta as any).env.VITE_PUSHER_APP_KEY;
 const VITE_PUSHER_APP_CLUSTER = (import.meta as any).env.VITE_PUSHER_APP_CLUSTER;
 
-const token = getToken();
-
+// Cria opções do Echo com um authorizer dinâmico (lê o token na hora da requisição)
 const options = {
   broadcaster: 'pusher',
-  key: VITE_PUSHER_APP_KEY,       // "3ef3d620c4f4ef9f57f3"
-  cluster: VITE_PUSHER_APP_CLUSTER, // "sa1"
-  forceTLS: true,                   // O Pusher na nuvem USA HTTPS/WSS
-  
-  // As configurações 'wsHost' e 'wsPort' foram REMOVIDAS
-  // porque estamos a usar o serviço de nuvem, não um servidor local.
-
-  // Endpoint de autenticação (ainda é o seu backend)
-  authEndpoint: `${VITE_API_URL}/api/broadcasting/auth`, // [cite: routes/api.php]
-  
-  // Envia o token JWT para autorizar a escuta em canais privados
+  key: VITE_PUSHER_APP_KEY,
+  cluster: VITE_PUSHER_APP_CLUSTER,
+  forceTLS: true,
+  authEndpoint: `${VITE_API_URL}/api/broadcasting/auth`,
   auth: {
     headers: {
-      Authorization: `Bearer ${token}`,
       Accept: 'application/json',
+    },
+    // Força o uso de um authorizer que adiciona o token atual no momento da requisição
+    authorizer: (channel: any, options: any) => {
+      return {
+        authorize: (socketId: string, callback: (err: any, auth?: any) => void) => {
+          const token = (typeof broadcastToken !== 'undefined' && broadcastToken) ? broadcastToken : getToken();
+          const body = JSON.stringify({ socket_id: socketId, channel_name: channel.name });
+
+          // Debug logging to help trace silent failures
+          // Use console.log (more likely to be visible) instead of console.debug
+          console.log('[Echo] authorizing', {
+            socketId,
+            channel: channel.name,
+            authEndpoint: options.authEndpoint,
+            tokenPresent: !!token,
+          });
+
+          const headers = {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          };
+
+          // Log the exact headers object that will be sent to the auth endpoint
+          console.log('[Echo] authorizer headers', headers);
+
+          // If there's no token, fail fast with a clear message to help debugging
+          if (!token) {
+            console.warn('[Echo] No token available for broadcasting auth');
+            return callback(new Error('No token available for broadcasting auth'));
+          }
+
+          fetch(options.authEndpoint, {
+            method: 'POST',
+            headers,
+            body,
+            // Do not include credentials/cookies for broadcasting auth; we use
+            // Authorization: Bearer <token> header instead. Sending credentials
+            // may trigger CORS credentials rules unnecessarily.
+          })
+            .then(async (res) => {
+              const text = await res.text();
+              console.log('[Echo] authorizer response', { status: res.status, body: text });
+
+              if (!res.ok) {
+                return callback(new Error(`Auth error ${res.status}: ${text}`));
+              }
+
+              try {
+                const data = JSON.parse(text);
+                return callback(null, data);
+              } catch (e) {
+                return callback(new Error('Invalid JSON in auth response'));
+              }
+            })
+            .catch((err) => {
+              console.error('[Echo] authorizer fetch failed', err);
+              callback(err);
+            });
+          // Also send the same debug payload to a temporary debug endpoint so
+          // the server can return the headers it actually received. This is
+          // helpful when a reverse proxy or some middleware strips Authorization
+          // headers.
+          (async () => {
+            try {
+              const debugRes = await fetch(`${VITE_API_URL}/api/debug/echo-headers`, {
+                method: 'POST',
+                headers,
+                body,
+                // No credentials; we are intentionally mirroring the same
+                // outgoing request as the authorizer.
+              });
+              const debugText = await debugRes.text();
+              console.log('[Echo] debug echo-headers response', { status: debugRes.status, body: debugText });
+            } catch (e) {
+              console.warn('[Echo] debug echo-headers request failed', e);
+            }
+          })();
+        },
+      };
     },
   },
 };
 
-// Cria e exporta a instância real do Echo
-export const echo = new Echo(options);
+// Module-level broadcast token (can be set by AuthService after login)
+let broadcastToken: string | null = null;
 
-// Para debug: logar o estado da conexão
-echo.connector.pusher.connection.bind('state_change', (states: any) => {
+export function setBroadcastToken(token: string | null) {
+  broadcastToken = token;
+  console.log('[Echo] broadcastToken set:', !!token);
+}
+
+// Cria e exporta a instância real do Echo
+export const echo = new Echo(options as any);
+
+// Para debug: logar o estado da conexão (acesso defensivo para manter tipagem TS)
+(echo as any).connector?.pusher?.connection?.bind?.('state_change', (states: any) => {
   console.log('[Echo] Mudança de estado da conexão:', states.current);
 });
-
-export default echo;

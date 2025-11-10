@@ -1,51 +1,37 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom"; // Adicionado useLocation
+import { useNavigate, useLocation } from "react-router-dom";
 import { getToken, clearTokenFallback, getUser } from "../utils/auth";
 import TutorDashboard from "../components/dashboard/tutorDashboard";
 import VeterinarioDashboard from "../components/dashboard/veterinarioDashboard";
 import ClinicaDashboard from "../components/dashboard/clinicaDashboard";
 import { echo } from "../services/echo";
-import { useRegisterPush } from "../hooks"; 
+import { useRegisterPush } from "../hooks";
+import UsuarioService from "../services/UsuarioService";
+import ProfileCompletionPrompt from "../components/dashboard/profileCompletionPrompt";
+// Importa o tipo 'Usuario'
+import { Usuario } from "../services/types";
 
-import UsuarioService from "../services/UsuarioService"; 
-import ProfileCompletionPrompt from "../components/dashboard/profileCompletionPrompt"; // NOVO: Importe o Prompt
+// Importa os services de perfil específico
+import ClinicaService from "../services/ClinicaService";
+import VeterinarioService from "../services/VeterinarioService";
+import TutorService from "../services/TutorService";
 
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  tipo: "tutor" | "veterinario" | "clinica";
-  // Adicione os relacionamentos que o backend pode enviar (agora com foto/descricao)
-  tutor?: any;
-  veterinario?: {
-      id: number;
-      descricao?: string | null;
-      foto_url?: string | null;
-      crmv: string;
-      // ... outras propriedades
-  };
-  clinica?: {
-      id: number;
-      descricao?: string | null;
-      foto_url?: string | null;
-      cnpj?: string;
-      // ... outras propriedades
-  };
-}
+// Define a interface completa do utilizador
+interface User extends Usuario {}
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const location = useLocation(); // Hook para ler o state
+  const location = useLocation();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [showProfilePrompt, setShowProfilePrompt] = useState(false); // NOVO: Estado do Prompt
-  const [missingFields, setMissingFields] = useState<string[]>([]); // NOVO: Campos pendentes
+  const [showProfilePrompt, setShowProfilePrompt] = useState(false);
+  const [missingFields, setMissingFields] = useState<string[]>([]);
 
-  // Hook de Notificação Push (correto)
+  // Hook de Notificação Push
   useRegisterPush();
 
-  // === Carregar usuário autenticado (Refatorado) ===
+  // === Carregar utilizador autenticado (LÓGICA DE FETCH CORRIGIDA) ===
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -53,23 +39,38 @@ export default function Dashboard() {
       return;
     }
 
-    const currentUser = getUser();
+    const currentUser = getUser(); // Apenas para o ID
     if (!currentUser || !currentUser.id) {
       navigate("/");
       return;
     }
 
-    // 3. Use o Serviço de Usuário (que usa o proxy axios)
     (async () => {
       try {
         setLoading(true);
-        // O getById foi ajustado no backend para carregar os relacionamentos (clinica/veterinario)
-        const data = await UsuarioService.getById(currentUser.id);
-        setUser(data);
+
+        // 1. Busca os dados BASE do utilizador (id, nome, email, tipo)
+        const baseUser = await UsuarioService.getById(currentUser.id);
+
+        // 2. Busca os dados ESPECÍFICOS do perfil (que contêm a foto_url)
+        // Usamos o 'baseUser.tipo' (da API) como fonte da verdade
+        if (baseUser.tipo === "clinica") {
+          const clinicaProfile = await ClinicaService.getMinhaClinica();
+          baseUser.clinica = clinicaProfile; // 3. Funde (merge) os dados
+        } else if (baseUser.tipo === "veterinario") {
+          const vetProfile = await VeterinarioService.getMeuPerfil();
+          baseUser.veterinario = vetProfile; // 3. Funde (merge) os dados
+        } else if (baseUser.tipo === "tutor") {
+          const tutorProfile = await TutorService.getMeuTutor();
+          baseUser.tutor = tutorProfile; // 3. Funde (merge) os dados
+        }
+
+        // 4. Define o estado com o objeto 'user' completo e "gordo"
+        setUser(baseUser);
+
       } catch (err: any) {
-        // O interceptor do axios (api.ts) já trata o 401
+        console.error("Erro ao carregar dados do dashboard:", err);
         setError(err.message || "Erro ao buscar dados do usuário.");
-        // Se falhar (ex: 500), deslogue para segurança
         clearTokenFallback();
         navigate("/");
       } finally {
@@ -78,61 +79,63 @@ export default function Dashboard() {
     })();
   }, [navigate]);
 
-  // === NOVO: Lógica de Checagem de Perfil ===
+  // === Lógica de Checagem de Perfil (Restante do ficheiro igual) ===
   useEffect(() => {
-    if (!user || user.tipo === 'tutor' || loading) {
-        setShowProfilePrompt(false);
-        return;
+    if (!user || user.tipo === "tutor" || loading) {
+      setShowProfilePrompt(false);
+      return;
     }
 
     const checkProfileCompletion = (user: User) => {
-        const fields: string[] = [];
-        let profile: any = null;
+      const fields: string[] = [];
+      let profile: any = null;
 
-        if (user.tipo === 'clinica' && user.clinica) {
-            profile = user.clinica;
-            if (!profile.descricao) fields.push('Descrição');
-            if (!profile.foto_url) fields.push('Foto de Perfil');
-            if (!profile.horario_funcionamento || profile.horario_funcionamento.includes('08:00-18:00')) fields.push('Horário de Funcionamento');
-        } else if (user.tipo === 'veterinario' && user.veterinario) {
-            profile = user.veterinario;
-            if (!profile.descricao) fields.push('Descrição');
-            if (!profile.foto_url) fields.push('Foto de Perfil');
-            if (!profile.especialidade) fields.push('Especialidade');
-            if (!profile.endereco) fields.push('Endereço/Localização');
-        }
+      if (user.tipo === "clinica" && user.clinica) {
+        profile = user.clinica;
+        if (!profile.descricao) fields.push("Descrição");
+        if (!profile.foto_url) fields.push("Foto de Perfil");
+        if (
+          !profile.horario_funcionamento ||
+          profile.horario_funcionamento.includes("08:00-18:00")
+        )
+          fields.push("Horário de Funcionamento");
+      } else if (user.tipo === "veterinario" && user.veterinario) {
+        profile = user.veterinario;
+        if (!profile.descricao) fields.push("Descrição");
+        if (!profile.foto_url) fields.push("Foto de Perfil");
+        if (!profile.especialidade) fields.push("Especialidade");
+        if (!profile.endereco) fields.push("Endereço/Localização");
+      }
 
-        setMissingFields(fields);
-        // Exibe o prompt se estiverem faltando campos críticos e o usuário for da clínica/vet
-        if (fields.length > 0 && (user.tipo === 'clinica' || user.tipo === 'veterinario')) {
-            // Atrasamos a exibição para não atrapalhar a navegação
-            setTimeout(() => {
-                setShowProfilePrompt(true);
-            }, 3000); // Exibe após 3 segundos
-        } else {
-            setShowProfilePrompt(false);
-        }
+      setMissingFields(fields);
+      if (
+        fields.length > 0 &&
+        (user.tipo === "clinica" || user.tipo === "veterinario")
+      ) {
+        setTimeout(() => {
+          setShowProfilePrompt(true);
+        }, 3000);
+      } else {
+        setShowProfilePrompt(false);
+      }
     };
 
     checkProfileCompletion(user);
-  }, [user, loading]); // Roda quando o usuário é carregado
+  }, [user, loading]);
 
-  // === Echo / Pusher / Notificações (mantido) ===
+  // === Echo / Pusher (mantido) ===
   useEffect(() => {
     if (!user) return;
 
     let channel: any;
     // ... (lógica de notificações) ...
 
-    // Cleanup (correto)
     return () => {
       if (channel) {
         // ... (cleanup) ...
       }
     };
-
-  }, [user]); // Depende do 'user'
-
+  }, [user]);
 
   // === Logout ===
   function handleLogout() {
@@ -146,29 +149,40 @@ export default function Dashboard() {
   if (error) return <p className="p-6 text-center text-red-500">{error}</p>;
   if (!user) return null;
 
-  // ---------- RENDER POR TIPO ----------
-  // NOVO: Passa o estado de navegação para o Dashboard específico
-  const initialActiveSection = location.state?.activeSection || 'home';
+  // Define a seção ativa com base no state de navegação (para o prompt de perfil)
+  const initialActiveSection = location.state?.activeSection || "home";
 
   return (
     <>
       <ProfileCompletionPrompt
         isOpen={showProfilePrompt}
         onClose={() => setShowProfilePrompt(false)}
-        tipo={user.tipo as 'clinica' | 'veterinario'}
+        tipo={user.tipo as "clinica" | "veterinario"}
         missingFields={missingFields}
       />
       {(() => {
-          switch (user.tipo) {
-              case "tutor":
-                  return <TutorDashboard user={user} onLogout={handleLogout} />;
-              case "veterinario":
-                  return <VeterinarioDashboard user={user} onLogout={handleLogout} initialSection={initialActiveSection} />;
-              case "clinica":
-                  return <ClinicaDashboard user={user} onLogout={handleLogout} initialSection={initialActiveSection} />;
-              default:
-                  return <p>Tipo de usuário inválido.</p>;
-          }
+        switch (user.tipo) {
+          case "tutor":
+            return <TutorDashboard user={user} onLogout={handleLogout} />;
+          case "veterinario":
+            return (
+              <VeterinarioDashboard
+                user={user}
+                onLogout={handleLogout}
+                initialSection={initialActiveSection as any} // Cast 'as any' para aceitar string
+              />
+            );
+          case "clinica":
+            return (
+              <ClinicaDashboard
+                user={user}
+                onLogout={handleLogout}
+                initialSection={initialActiveSection as any} // Cast 'as any' para aceitar string
+              />
+            );
+          default:
+            return <p>Tipo de usuário inválido.</p>;
+        }
       })()}
     </>
   );

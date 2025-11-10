@@ -15,6 +15,7 @@ class Tutor extends Model
         'telefone_principal',
         'telefone_alternativo',
         'cpf',
+        'email_contato',
     ];
 
     public function user()

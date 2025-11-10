@@ -55,6 +55,7 @@ class EmergenciaController extends Controller
                 'pet_id' => 'nullable|exists:pets,id',
                 'tutor_nome' => 'required_without:pet_id|string|max:100',
                 'tutor_telefone' => 'required_without:pet_id|string|max:20',
+                'tutor_email' => 'nullable|email|max:255', // ✅ CAMPO DE VALIDAÇÃO ADICIONADO
                 'location' => 'nullable|array',
                 'location.latitude' => 'required_with:location|numeric',
                 'location.longitude' => 'required_with:location|numeric',
@@ -82,7 +83,8 @@ class EmergenciaController extends Controller
                 $tutor = Tutor::create([
                     'usuario_id' => null,
                     'nome_completo' => $validated['tutor_nome'],
-                    'telefone_principal' => $validated['tutor_telefone']
+                    'telefone_principal' => $validated['tutor_telefone'],
+                    'email_contato' => $validated['tutor_email'] ?? null, // ✅ CAMPO ADICIONADO AQUI
                 ]);
 
                 // gerar token de edição para tutor anônimo
@@ -190,7 +192,7 @@ class EmergenciaController extends Controller
         unset($validated['location']);
 
         // Remover dados temporários e tokens
-        unset($validated['recaptcha_token'], $validated['tutor_nome'], $validated['tutor_telefone']);
+        unset($validated['recaptcha_token'], $validated['tutor_nome'], $validated['tutor_telefone'], $validated['tutor_email']); // ✅ CAMPO ADICIONADO AO UNSET
 
         // Log para auditoria mínima do request anônimo
         Log::info('Criando emergência', [

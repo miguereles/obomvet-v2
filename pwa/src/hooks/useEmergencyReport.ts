@@ -1,136 +1,154 @@
-// src/hooks/useEmergencyReport.ts
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   EmergencyForm,
-  AutofillResponse,
   Clinica,
   VisitaTipo,
   URGENCIAS,
-  // ❌ Pet removido daqui
+  UrgenciaNivel,
+  AIResponse,
+  AIPergunta,
+  AIRelatorioFinal,
+  ChatMessage,
 } from "../types/emergency.types";
-
-// ✅ 1. Importe os types e services corretos
-import { Pet } from "../services/types"; // Importa o tipo Pet central
+import { Pet } from "../services/types"; 
 import IaService from "../services/IaService";
-import PetService from "../services/PetService";
+import { PetService } from "../services/PetService"; 
 import EmergenciaService from "../services/EmergenciaService";
-
 import { loadRecaptcha, getRecaptchaToken } from "../utils/recaptcha";
 import { useGeolocation } from "./useGeolocation";
-import { usePets } from "./usePets"; // Agora usa o hook 'usePets' corrigido
-import { useAudioRecording } from "./useAudioRecording"; // Já está refatorado
+import { usePets } from "./usePets"; 
+import { useAudioRecording } from "./useAudioRecording"; 
 
-// Tipagem local para o formulário
 type LocalEmergencyForm = EmergencyForm & {
   tutor_nome?: string;
   tutor_email?: string;
   tutor_telefone?: string;
   nome_pet?: string;
-  pet_id?: string; // O <select> usa string
+  pet_id?: string; 
 };
 
 export function useEmergencyReport(token: string | null) {
+  const navigate = useNavigate();
+  
   const [formData, setFormData] = useState<LocalEmergencyForm>({
     descricao_sintomas: "",
-    nivel_urgencia: "media",
+    nome_pet: "",
+    pet_id: "", 
     tutor_nome: "",
     tutor_email: "",
     tutor_telefone: "",
-    nome_pet: "",
-    pet_id: "", // pet_id é string no formulário (select)
   });
+  
   const [textInput, setTextInput] = useState("");
   const [visitaTipo, setVisitaTipo] = useState<VisitaTipo | null>(null);
-
-  const [aiResponse, setAiResponse] = useState<AutofillResponse | null>(null);
-  const [missingFields, setMissingFields] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  
+  const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [report, setReport] = useState<string | null>(null);
-  const [clinica, setClinica] = useState<Clinica | null>(null);
-  const [lastVisitaTipo, setLastVisitaTipo] = useState<VisitaTipo | null>(null);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [editTokens, setEditTokens] = useState<null | { tutor?: string; pet?: string }>(null);
+
+  const [aiReportModalOpen, setAiReportModalOpen] = useState(false);
+  const [aiFollowUpModalOpen, setAiFollowUpModalOpen] = useState(false);
+
+  const [aiResponse, setAiResponse] = useState<AIRelatorioFinal | null>(null);
+  const [aiQuestion, setAiQuestion] = useState<string | null>(null);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
 
   const { location, locationError } = useGeolocation();
-  // ✅ 2. 'usePets' agora retorna o tipo Pet[] correto (com id: number)
   const { pets, setPets } = usePets(token); 
   const {
     isRecording,
     isTranscribing,
-    transcribedText,
-    setTranscribedText,
+    aiResponseFromAudio,
     audioError,
     setAudioError,
     startRecording,
     stopRecording,
   } = useAudioRecording(token);
 
-  // carregar reCAPTCHA v3 (se configurado)
   useEffect(() => {
     try {
       loadRecaptcha();
     } catch (e) {
-      // noop
+      console.error("Falha ao carregar recaptcha:", e);
     }
   }, []);
 
-  const analyzeTextWithAI = useCallback(async () => {
-    if (!token) {
-      setError("Faça login para usar a análise de IA.");
-      return;
+  const processAIResponse = (response: AIResponse) => {
+    if (response.tipo === "pergunta") {
+      setAiQuestion(response.texto);
+      setChatHistory(response.chat_history);
+      setAiFollowUpModalOpen(true);
+    } else if (response.tipo === "relatorio_final") {
+      const { emergencia, animal, tutor } = response.dados;
+      setAiResponse(response.dados);
+      setChatHistory(response.chat_history);
+      setAiFollowUpModalOpen(false);
+      setAiReportModalOpen(true);
+
+      const updates: Partial<LocalEmergencyForm> = {};
+      if (emergencia.descricao_sintomas) {
+        setTextInput(emergencia.descricao_sintomas);
+      }
+      
+      if (!token) {
+        if (tutor.nome) updates.tutor_nome = tutor.nome;
+        if (tutor.telefone) updates.tutor_telefone = tutor.telefone;
+        if (animal.nome) updates.nome_pet = animal.nome;
+      }
+      if (Object.keys(updates).length > 0) {
+        setFormData((prev) => ({ ...prev, ...updates }));
+      }
     }
-    if (!textInput.trim()) {
+  };
+
+  const analyzeTextWithAI = useCallback(async (textToAnalyze: string) => {
+    if (!textToAnalyze.trim()) {
       setError("Digite ou grave os sintomas antes de analisar.");
       return;
     }
 
-    setLoading(true);
+    setLoading("analisando");
     setError(null);
 
     try {
-      // ✅ Use o Service
-      const autofillResponse = await IaService.analyzeText(textInput.trim());
-
-      setAiResponse(autofillResponse);
-      setMissingFields(autofillResponse.faltando || []);
-
-      const preenchidos = autofillResponse.preenchidos || {};
-      const updates: Partial<EmergencyForm> = {};
-
-      if (preenchidos.descricao_sintomas)
-        updates.descricao_sintomas = preenchidos.descricao_sintomas;
-
-      if (
-        preenchidos.nivel_urgencia &&
-        URGENCIAS.includes(preenchidos.nivel_urgencia)
-      )
-        updates.nivel_urgencia = preenchidos.nivel_urgencia;
-
-      if (Object.keys(updates).length > 0) {
-        setFormData((prev) => ({ ...prev, ...updates }));
-        if (updates.descricao_sintomas) setTextInput(updates.descricao_sintomas);
-      }
+      const response = await IaService.analyzeText(textToAnalyze.trim());
+      processAIResponse(response);
     } catch (err: any) {
-      setError(err.message || "Erro ao conectar à IA.");
+      console.error("Erro ao iniciar análise:", err);
+      setError(err.response?.data?.error || err.message || "Erro ao conectar à IA.");
     } finally {
-      setLoading(false);
+      setLoading(null);
     }
-  }, [textInput, token]);
+  }, [token]);
 
   useEffect(() => {
-    if (transcribedText && textInput !== transcribedText) {
-      setTextInput(transcribedText);
-      setFormData((prev) => ({ ...prev, descricao_sintomas: transcribedText }));
+    if (aiResponseFromAudio) {
+      processAIResponse(aiResponseFromAudio);
     }
-  }, [transcribedText, textInput]);
-
+  }, [aiResponseFromAudio]);
+  
   useEffect(() => {
     if (audioError) setError(audioError);
   }, [audioError]);
 
+  const handleFollowUpSubmit = async (userResponse: string) => {
+    setLoading("analisando");
+    setError(null);
+    setAiFollowUpModalOpen(false);
+
+    try {
+      const response = await IaService.continueAnalysis(chatHistory, userResponse);
+      processAIResponse(response);
+    } catch (err: any) {
+      console.error("Erro ao continuar análise:", err);
+      setError(err.response?.data?.error || err.message || "Erro na conversa com IA.");
+    } finally {
+      setLoading(null);
+    }
+  };
+
   const validateForm = useCallback((): boolean => {
-    if (!formData.descricao_sintomas.trim()) {
+    if (!textInput.trim()) {
       setError("Descreva os sintomas.");
       return false;
     }
@@ -163,24 +181,30 @@ export function useEmergencyReport(token: string | null) {
     }
     setError(null);
     return true;
-  }, [formData, visitaTipo, token]);
-
+  }, [formData, visitaTipo, token, textInput]);
+  
   const handleSubmit = useCallback(
     async (clinicId?: number) => {
-      if (!validateForm()) return;
+      if (!validateForm() || !aiResponse) {
+        setError("Dados do relatório da IA não encontrados.");
+        return;
+      }
 
-      setLoading(true);
+      setLoading("enviando");
       setError(null);
-      setLastVisitaTipo(visitaTipo);
+      setAiReportModalOpen(false);
 
       try {
-        const nivel_urgencia = formData.nivel_urgencia
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "");
+        const { emergencia } = aiResponse;
+        let nivel_urgencia = emergencia.nivel_urgencia as UrgenciaNivel;
+        if (!URGENCIAS.includes(nivel_urgencia)) {
+            nivel_urgencia = "media";
+        }
 
         const payload: any = {
-          descricao_sintomas: formData.descricao_sintomas.trim(),
+          descricao_sintomas: textInput.trim(),
+          relatorio_detalhado_ia: emergencia.relatorio_detalhado_ia,
+          materiais_provaveis: emergencia.materiais_provaveis,
           nivel_urgencia,
           visita_tipo: visitaTipo,
           ...(location && {
@@ -191,98 +215,89 @@ export function useEmergencyReport(token: string | null) {
         if (clinicId) payload.clinica_id = clinicId;
 
         if (token) {
-          // --- Usuário Logado ---
           if (formData.pet_id) {
             payload.pet_id = Number(formData.pet_id);
           } else if ((formData.nome_pet || '').trim()) {
-            
-            // Seu PetController::store (logado) só precisa do 'nome' e 'especie'
             const newPet = await PetService.create({ 
               nome: (formData.nome_pet || '').trim(),
-              especie: 'N/A', // PetController exige 'especie'
+              especie: aiResponse.animal.especie || 'N/A', 
             });
-            
-            // ✅ 3. ESTA É A CORREÇÃO (o código da imagem)
-            // O estado 'pets' agora é Pet[] (com id: number)
-            // O 'newPet' retornado é Pet (com id: number)
-            // Agora os tipos são compatíveis e não precisamos converter nada.
-            setPets((prev: Pet[]) => [
-              ...prev,
-              newPet // Adiciona o objeto Pet completo
-            ]);
-
-            payload.pet_id = newPet.id; // Já é number
+            setPets((prev: Pet[]) => [...prev, newPet]);
+            payload.pet_id = newPet.id; 
           }
         } else {
-          // --- Usuário Anônimo ---
           payload.tutor_nome = (formData.tutor_nome || '').trim();
+          payload.tutor_email = (formData.tutor_email || '').trim();
           payload.tutor_telefone = (formData.tutor_telefone || '').trim();
           payload.pet_nome = (formData.nome_pet || '').trim();
           
           try {
             const recaptchaToken = await getRecaptchaToken('emergencia_submit');
             if (recaptchaToken) payload.recaptcha_token = recaptchaToken;
-          } catch (e) {
-            // Envio sem recaptcha
-          }
+          } catch (e) { console.warn("Falha ao pegar recaptcha", e); }
         }
 
         const data = await EmergenciaService.create(payload);
-
-        setReport("Emergência registrada!");
-        setClinica(data.clinica || null);
-        setEditTokens(data.edit_tokens || null);
-        setShowSuccessModal(true);
+        
+        // ✅ --- INÍCIO DA ADIÇÃO: Salvar ID anónimo ---
+        if (!token) {
+          try {
+            // Guarda o ID da emergência e o nome do pet para o pop-up
+            localStorage.setItem('anonymousEmergencyId', data.emergencia.id.toString());
+            localStorage.setItem('anonymousEmergencyPetName', payload.pet_nome || 'seu pet'); 
+          } catch (e) {
+            console.warn("Falha ao salvar emergência anónima no localStorage", e);
+          }
+        }
+        // ✅ --- FIM DA ADIÇÃO ---
+        
+        navigate(`/emergencia/${data.emergencia.id}`);
 
       } catch (err: any) {
         console.error("Erro no handleSubmit:", err.response || err);
         setError(err.response?.data?.message || err.message || "Erro ao enviar emergência.");
       } finally {
-        setLoading(false);
+        setLoading(null);
       }
     },
-    // 'pets' foi removido das dependências pois 'setPets' garante a atualização
-    [formData, visitaTipo, token, location, setPets, validateForm] 
+    [formData, visitaTipo, token, location, setPets, validateForm, aiResponse, textInput, navigate] 
   );
-
-  const closeModal = useCallback(() => {
-    setShowSuccessModal(false);
+  
+  const closeModal = () => {
     setFormData({
       descricao_sintomas: "",
-      nivel_urgencia: "media",
+      pet_id: "",
+      nome_pet: "",
       tutor_nome: "",
       tutor_email: "",
       tutor_telefone: "",
-      pet_id: "",
-      nome_pet: ""
     });
     setTextInput("");
     setAiResponse(null);
-    setMissingFields([]);
     setVisitaTipo(null);
-    setLastVisitaTipo(null);
-    setReport(null);
-    setClinica(null);
     setError(null);
-    setEditTokens(null);
-  }, []);
-
+    setChatHistory([]);
+    setAiReportModalOpen(false);
+    setAiFollowUpModalOpen(false);
+    setAiQuestion(null);
+  };
+  
   return {
     formData,
     textInput,
     visitaTipo,
     loading,
     error,
-    report,
-    clinica,
-    lastVisitaTipo,
-    showSuccessModal,
     location,
     locationError,
     pets,
     isRecording,
     isTranscribing,
-    transcribedText,
+    aiReportModalOpen,
+    aiFollowUpModalOpen,
+    aiResponse,
+    aiQuestion,
+    setLoading,
     setFormData,
     setTextInput,
     setVisitaTipo,
@@ -293,6 +308,8 @@ export function useEmergencyReport(token: string | null) {
     handleSubmit,
     closeModal,
     validateForm,
-    editTokens,
+    handleFollowUpSubmit,
+    setAiReportModalOpen,
+    setAiFollowUpModalOpen,
   };
 }

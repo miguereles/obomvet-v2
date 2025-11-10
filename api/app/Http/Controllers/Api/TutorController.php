@@ -12,7 +12,8 @@ class TutorController extends Controller
     {
         // Aplica políticas de autorização nos métodos padrões (exceto métodos customizados)
         $this->authorizeResource(Tutor::class, 'tutor', [
-            'except' => ['getByUsuario', 'getPets', 'getEmergencias']
+            // ✅ CORREÇÃO: Adicionado 'meu' às exceções
+            'except' => ['getByUsuario', 'getPets', 'getEmergencias', 'meu']
         ]);
     }
 
@@ -135,6 +136,28 @@ class TutorController extends Controller
 
         if (!$tutor) {
             return response()->json(['message' => 'Tutor não encontrado'], 404);
+        }
+
+        return response()->json($tutor);
+    }
+    
+    // ✅ NOVO MÉTODO
+    /**
+     * Retorna os dados do tutor logado (para o dashboard e hooks).
+     * ROTA: GET /tutor/meu
+     */
+    public function meu(Request $request)
+    {
+        $user = $request->user();
+        if (!$user || !$user->tutor) {
+            return response()->json(['error' => 'Usuário não vinculado a um perfil de tutor.'], 403);
+        }
+        
+        // Carrega o tutor com seus pets e emergências
+        $tutor = $user->tutor()->with(['pets', 'emergencias'])->first();
+        
+        if (!$tutor) {
+             return response()->json(['error' => 'Perfil de tutor não encontrado.'], 404);
         }
 
         return response()->json($tutor);

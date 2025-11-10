@@ -5,10 +5,11 @@ const TutorService = {
   
   /**
    * Busca um tutor pelo ID do usuário logado.
-   * Rota: GET /tutores/usuario/{usuario} (de routes/api.php)
+   * Rota: GET /tutor/meu (de routes/api.php)
    */
-  getByUsuarioId: async (usuarioId: string): Promise<Tutor> => {
-    const response = await api.get<Tutor>(`/tutores/usuario/${usuarioId}`);
+  // ✅ Esta é a função que estamos a chamar
+  getMeuTutor: async (): Promise<Tutor> => {
+    const response = await api.get<Tutor>(`/tutor/meu`);
     return response.data;
   },
 

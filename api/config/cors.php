@@ -40,10 +40,13 @@ return [
     | Em produção, liste apenas o domínio do front-end.
     |
     */
-    'allowed_origins' => ['http://localhost:5173',
-                         'http://localhost:5173',
-                         'https://localhost:8000',
-                         'https://localhost:8000'],
+    // List all allowed origins explicitly, even in development
+    'allowed_origins' => [
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'http://localhost:8000',
+        'https://localhost:8000',
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -63,11 +66,12 @@ return [
     | Cabeçalhos permitidos na requisição. Use ['*'] para todos.
     |
     */
-'allowed_headers' => [
+'allowed_headers' => env('APP_ENV') !== 'production' ? ['*'] : [
         'Content-Type',
         'Accept',
         'Authorization',
         'X-Requested-With', 
+        'X-PUBLIC-IA-KEY',
     ],
     /*
     |--------------------------------------------------------------------------
@@ -98,6 +102,8 @@ return [
     | Se usar JWT via header, também pode ficar como true.
     |
     */
+    // Since we're now explicitly listing allowed origins (no wildcards),
+    // we can safely enable credentials in all environments
     'supports_credentials' => true,
 
 ];
