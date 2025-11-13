@@ -20,7 +20,6 @@ use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
-// Register Laravel Echo broadcasting auth endpoint with our custom middleware
 Broadcast::routes(['middleware' => ['api', \App\Http\Middleware\ValidateBroadcastingAuth::class]]);
 
 Route::get('/teste-cache', function () {
@@ -32,10 +31,12 @@ Route::get('/veterinarios-autonomos', [VeterinarioController::class, 'getAutonom
 Route::prefix('auth')->group(function () {
     Route::post('register', [AuthController::class, 'register']);
     Route::post('login', [AuthController::class, 'login']);
+    
     Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:api');
+    Route::post('refresh', [AuthController::class, 'refresh'])->middleware('auth:api');
+    Route::get('me', [AuthController::class, 'me'])->middleware('auth:api');
 });
 
-// --- ROTAS PÚBLICAS PARA ANÓNIMOS ---
 Route::post('/pets', [PetController::class, 'store'])->middleware('throttle:10,1');
 Route::get('/pets/{pet}', [PetController::class, 'show']);
 Route::patch('/pets/{pet}/edit-with-token', [PetController::class, 'updateWithToken']);
@@ -43,18 +44,9 @@ Route::delete('/pets/{pet}/delete-with-token', [PetController::class, 'destroyWi
 Route::patch('/tutores/{tutor}/edit-with-token', [TutorController::class, 'updateWithToken']);
 Route::delete('/tutores/{tutor}/delete-with-token', [TutorController::class, 'destroyWithToken']);
 
-// Rota pública para criar emergência (logado ou anónimo)
 Route::post('/emergencias', [EmergenciaController::class, 'store'])->middleware('throttle:10,1');
-
-// [ROTA PÚBLICA ADICIONADA]
-// Esta é a rota que estava a faltar.
-// Permite ao tutor anónimo VER a emergência usando o UUID.
 Route::get('emergencias/publico/{uuid}', [EmergenciaController::class, 'showPublico']);
-
-// Rota pública para salvar a subscrição de Push (logado ou anónimo)
-// Esta rota está correta e aponta para o PushController
 Route::post('/save-subscription', [PushController::class, 'store']);
-// --- FIM DAS ROTAS PÚBLICAS ---
 
 
 Route::middleware('throttle:5,1')->group(function () {
@@ -66,23 +58,17 @@ Route::middleware('throttle:5,1')->group(function () {
 Route::get('emergencias/por-clinica', [EmergenciaController::class, 'porClinica'])
     ->middleware('auth:api');
 
-// Rota específica 'emergencias/meus' (Corrigida da última vez)
 Route::get('emergencias/meus', [EmergenciaController::class, 'meus'])
     ->middleware('auth:api');
 
-// Regista as rotas de emergência (index, show, update, destroy)
-// Excluímos 'store' porque já a definimos como pública acima
 Route::apiResource('emergencias', EmergenciaController::class)->except(['store']);
 
 
 Route::get('/clinicas-publicas', [ClinicaController::class, 'indexPublic']);
 
-// ✅ CORREÇÃO: A rota 'clinicas/minha' (autenticada) foi MOVIDA PARA CIMA
-// para vir ANTES da rota pública genérica 'clinicas/{clinica}'.
 Route::get('clinicas/minha', [ClinicaController::class, 'minha'])
     ->middleware('auth:api');
 
-// Rota pública 'show' de clínica.
 Route::get('clinicas/{clinica}', [ClinicaController::class, 'show']);
 
 Route::apiResource('pets', PetController::class)->only(['store', 'show']);
@@ -90,8 +76,6 @@ Route::apiResource('pets', PetController::class)->only(['store', 'show']);
 Route::middleware('auth:api')->group(function () {
 
     Route::get('emergencias/{emergencia}/historicos', [EmergenciaController::class, 'getHistoricos']);
-    // ✅ ROTA ADICIONADA: Esta linha corrige o erro 500
-    // Associa a URL do frontend ao método 'storeHistorico' no EmergenciaController
     Route::post('emergencias/{emergencia}/historicos', [EmergenciaController::class, 'storeHistorico']);
 
     Route::post('/usuarios/veterinarios', [UsuarioController::class, 'storeVeterinario']);
@@ -106,10 +90,8 @@ Route::middleware('auth:api')->group(function () {
     Route::get('tutores/{tutor}/emergencias', [TutorController::class, 'getEmergencias']);
     Route::post('tutores/{tutor}/pets', [TutorController::class, 'storePet']);
     
-    // ✅ Rota 'clinicas/minha' FOI MOVIDA para a linha 60
     Route::post('clinicas/{clinica}/foto', [ClinicaController::class, 'uploadFoto']);
     
-    // Rota 'show' de clínicas removida daqui para evitar duplicidade com a rota pública
     Route::apiResource('clinicas', ClinicaController::class)->except(['show']);
 
     Route::get('clinicas/{clinica}/veterinarios', [ClinicaController::class, 'getVeterinarios']);
@@ -125,6 +107,8 @@ Route::middleware('auth:api')->group(function () {
     Route::get('veterinarios/meu', [VeterinarioController::class, 'meu']);
     Route::post('veterinarios/{veterinario}/foto', [VeterinarioController::class, 'uploadFoto']);
     
+    Route::get('veterinario/emergencias/minhas', [VeterinarioController::class, 'minhasEmergencias']);
+
     Route::apiResource('veterinarios', VeterinarioController::class);
     Route::get('veterinarios/{veterinario}/emergencias', [VeterinarioController::class, 'getEmergencias']);
     Route::post('veterinarios/{veterinario}/emergencias/{emergencia}/accept', [VeterinarioController::class, 'acceptEmergencia']);
@@ -138,7 +122,6 @@ Route::middleware('auth:api')->group(function () {
     Route::apiResource('anexos', AnexoController::class);
     Route::get('anexos/{anexo}/anexable', [AnexoController::class, 'getAnexable']);
 
-    // Rota específica 'meus-historicos' (Corrigida da última vez)
     Route::get('meus-historicos', [HistoricoAtendimentoController::class, 'meus']);
 
     Route::apiResource('historicos', HistoricoAtendimentoController::class);
@@ -146,8 +129,6 @@ Route::middleware('auth:api')->group(function () {
     Route::get('historicos/{historico}/anexo', [HistoricoAtendimentoController::class, 'getAnexo']);
     Route::post('historicos/{historico}/anexo', [HistoricoAtendimentoController::class, 'storeAnexo']);
     
-    // [CORREÇÃO] A sua rota 'apiResource' para 'pets' estava duplicada.
-    // Mantive a pública 'store'/'show' e movi a protegida para dentro do 'auth:api'.
     Route::apiResource('pets', PetController::class)->except(['store', 'show']);
 
     Route::get('pets/{pet}/tutores', [PetController::class, 'getTutors']);
@@ -157,7 +138,6 @@ Route::middleware('auth:api')->group(function () {
     Route::post('pets/{pet}/prontuarios', [PetController::class, 'storeProntuario']);
     Route::get('pets/{pet}/foto', [PetController::class, 'getFoto']);
 
-    // Esta rota é para utilizadores logados (original)
     Route::post('/push/subscribe', function (Request $request) {
         $request->user()->updatePushSubscription(
             $request->input('endpoint'),
@@ -166,9 +146,6 @@ Route::middleware('auth:api')->group(function () {
         );
         return response()->json(['success' => true], 200);
     });
-
-    // Broadcasting routes are registered in App\Providers\BroadcastServiceProvider
-    // to ensure we use the custom ValidateBroadcastingAuth middleware and CORS handling.
 });
 
 Route::get('/email/verify/{id}/{hash}', function (EmailVerificationRequest $request) {
@@ -184,9 +161,6 @@ Route::post('/email/resend', function (Request $request) {
 
 Route::post('/send-push', [PushController::class, 'send']);
 
-// Temporary debug route: echoes back request headers and body so the frontend
-// can verify what headers actually reached the server during broadcasting auth.
-// Remove this route after debugging.
 Route::post('/debug/echo-headers', function (Request $request) {
     $headers = $request->headers->all();
     $body = $request->all();

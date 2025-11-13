@@ -1,23 +1,38 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
+// 1. Importa os ícones de olho
+import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
-// ✅ 1. Importe o seu novo service
-import AuthService from "../services/AuthService";
-// ❌ Funções de auth não são mais necessárias aqui
-// import { setTokenFallback, setUserFallback } from "../utils/auth"; 
+// 2. CORREÇÃO: Adicionando a extensão .ts ao import
+import AuthService from "../services/AuthService.ts";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false); // 2. Estado para mostrar/ocultar senha
+  const [successMessage, setSuccessMessage] = useState<string | null>(null); // Para msg de registro
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // 3. Verifica se o usuário acabou de se registrar
+  useEffect(() => {
+    if (searchParams.get("registered") === "true") {
+      setSuccessMessage("Cadastro realizado com sucesso! Faça seu login.");
+    }
+  }, [searchParams]);
 
   async function solicitarPermissao() {
-    const permission = await Notification.requestPermission();
-    if (permission === "granted") {
-      console.log("Usuário autorizou notificações.");
+    try {
+      if ('Notification' in window && Notification.permission !== "granted") {
+        const permission = await Notification.requestPermission();
+        if (permission === "granted") {
+          console.log("Usuário autorizou notificações.");
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao solicitar permissão de notificação:", err);
     }
   }
 
@@ -25,29 +40,29 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setSuccessMessage(null); // Limpa a msg de sucesso ao tentar logar
 
     try {
-      // ✅ 2. Use o AuthService para fazer o login
-      // A lógica de salvar no localStorage já está DENTRO do AuthService.login()
       const data = await AuthService.login({ email, password });
-
       console.info("Resposta do login:", data);
 
-      // ✅ 3. Apenas solicite permissão e navegue
       solicitarPermissao();
       navigate("/dashboard");
 
     } catch (err: any) {
-      // ✅ 4. Trate o erro do Axios
-      // O interceptor em 'api.ts' trata o 401 (Não autenticado)
-      // Aqui tratamos outros erros, como 422 (Validação) ou 500
+      // 4. Tratamento de erro amigável (como você já tinha)
       console.error("Erro no handleSubmit do Login:", err);
-      const errorMsg = err.response?.data?.message || err.message || "Erro ao fazer login.";
-      setError(errorMsg);
-      // Se o erro for de credenciais inválidas (do AuthController)
-      if (errorMsg.includes("Credenciais inválidas")) {
-        setError("Email ou senha incorretos.");
+      let errorMsg = err.response?.data?.message || err.message || "Erro ao fazer login.";
+      
+      if (err.response?.status === 401 || errorMsg.includes("Credenciais inválidas")) {
+         errorMsg = "Email ou senha incorretos. Verifique e tente novamente.";
+      } else if (err.response?.status === 422) {
+         errorMsg = "Formato de email ou senha inválido.";
+      } else if (!err.response) {
+         errorMsg = "Não foi possível conectar ao servidor. Verifique sua internet.";
       }
+
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -78,7 +93,19 @@ export default function Login() {
         <h1 className="text-3xl font-bold mb-6 text-center text-[#004E64]">
           Entrar no oBomVet
         </h1>
+        
+        {/* 5. Mensagem de Sucesso (após registro) */}
+        {successMessage && (
+          <motion.p
+            className="text-green-700 mb-4 text-center bg-green-50 border border-green-200 rounded p-2"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            {successMessage}
+          </motion.p>
+        )}
 
+        {/* 6. Mensagem de Erro (amigável) */}
         {error && (
           <motion.p
             className="text-red-500 mb-4 text-center bg-red-50 border border-red-200 rounded p-2"
@@ -104,14 +131,26 @@ export default function Login() {
               className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#25A18E] transition"
               required
             />
-            <input
-              type="password"
-              placeholder="Senha"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#25A18E] transition"
-              required
-            />
+            
+            {/* 7. Campo de Senha com Ícone */}
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="Senha"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#25A18E] transition pr-10" // Padding à direita
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-[#004E64]"
+                title={showPassword ? "Ocultar senha" : "Mostrar senha"}
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
           </motion.div>
 
           <motion.button
@@ -119,7 +158,7 @@ export default function Login() {
             whileTap={{ scale: 0.97 }}
             type="submit"
             disabled={loading}
-            className="w-full bg-[#25A18E] text-white p-3 rounded-lg font-semibold hover:bg-[#208B7C] transition"
+            className="w-full bg-[#25A18E] text-white p-3 rounded-lg font-semibold hover:bg-[#208B7C] transition disabled:opacity-70"
           >
             {loading ? "Entrando..." : "Entrar"}
           </motion.button>
@@ -132,8 +171,6 @@ export default function Login() {
           </Link>
         </p>
       </motion.div>
-      
     </motion.div>
-    
   );
 }

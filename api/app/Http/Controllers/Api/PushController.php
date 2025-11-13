@@ -7,8 +7,8 @@ use Illuminate\Http\Request;
 use Minishlink\WebPush\WebPush;
 use Minishlink\WebPush\Subscription;
 use App\Models\Usuario;
-use App\Models\Tutor; // [LINHA ADICIONADA]
-use Illuminate\Support\Facades\Auth; // [LINHA ADICIONADA]
+use App\Models\Tutor;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class PushController extends Controller
@@ -19,14 +19,16 @@ class PushController extends Controller
      */
     public function store(Request $request)
     {
+        // ✅ === INÍCIO DA CORREÇÃO ===
+        // Alteramos a validação para corresponder ao que o PushService.ts envia
+        // (endpoint, public_key, auth_token) e removemos a regra 'unique'.
         $validated = $request->validate([
             'endpoint' => 'required|string',
-            'keys' => 'required|array',
-            'keys.auth' => 'required|string',
-            'keys.p256dh' => 'required|string',
-            // O frontend DEVE enviar um destes dois:
+            'public_key' => 'nullable|string', // Era 'keys.p256dh'
+            'auth_token' => 'nullable|string', // Era 'keys.auth'
             'tutor_token' => 'nullable|string|exists:tutors,anonymous_edit_token',
         ]);
+        // ✅ === FIM DA CORREÇÃO ===
 
         $notifiableTutor = null;
 
@@ -37,18 +39,31 @@ class PushController extends Controller
         } 
         // Caso 2: Utilizador é anónimo (ex: página de acompanhamento)
         // O frontend (useRegisterPush.ts) deve enviar o token anónimo do tutor
-        else if ($request->tutor_token) {
-            $notifiableTutor = Tutor::where('anonymous_edit_token', $request->tutor_token)->first();
+        else if (!empty($validated['tutor_token'])) {
+            $notifiableTutor = Tutor::where('anonymous_edit_token', $validated['tutor_token'])->first();
         }
 
         // Se não encontrou nem logado nem anónimo, falha.
         if (!$notifiableTutor) {
+            Log::warning('Push subscription failed: No valid user or tutor token provided.', ['endpoint' => $validated['endpoint']]);
             return response()->json(['message' => 'Não foi possível identificar o subscritor.'], 404);
         }
 
-        // Salva a subscrição na coluna 'push_subscription' do *Tutor*
-        $notifiableTutor->push_subscription = $validated;
-        $notifiableTutor->save();
+        // ✅ === INÍCIO DA CORREÇÃO 2 ===
+        // Usamos updateOrCreate para evitar duplicados e lidar com atualizações.
+        // Isto salva na tabela 'push_subscriptions' (polimórfica)
+        $notifiableTutor->pushSubscriptions()->updateOrCreate(
+            ['endpoint' => $validated['endpoint']],
+            [
+                'public_key' => $validated['public_key'] ?? null,
+                'auth_token' => $validated['auth_token'] ?? null,
+            ]
+        );
+        // ✅ === FIM DA CORREÇÃO 2 ===
+        
+        // A sua lógica antiga de salvar na coluna 'push_subscription' 
+        // foi substituída pelo 'updateOrCreate' acima, que é mais robusto
+        // e usa a tabela correta.
 
         return response()->json(['message' => 'Subscription salva com sucesso.']);
     }

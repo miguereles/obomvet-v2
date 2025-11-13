@@ -1,7 +1,8 @@
-import { Link, useNavigate } from "react-router-dom"; // ✅ Importado useNavigate
-import { motion, AnimatePresence } from "framer-motion"; // ✅ Importado AnimatePresence
-import Navbar from "../components/Navbar";
-import InstallPwaCard from "../components/InstallPwaCard";
+import { Link, useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+// ✅ CORREÇÃO: Revertendo para caminhos relativos COM extensão
+import Navbar from "../components/Navbar.tsx";
+import InstallPwaCard from "../components/InstallPwaCard.tsx";
 import {
   AlertTriangle,
   MapPin,
@@ -14,33 +15,29 @@ import {
   Shield,
   PawPrint,
   CheckCircle,
-  Siren, // ✅ Adicionado
-  ArrowRight, // ✅ Adicionado
-  X, // ✅ Adicionado
+  Siren,
+  ArrowRight,
+  X,
 } from "lucide-react";
 import { useState, useEffect, ReactNode } from "react";
-import { getUser } from "../utils/auth";
-// ✅ Importado o tipo Emergencia e o Service
-import { Usuario, Emergencia } from "../services/types";
-import EmergenciaService from "../services/EmergenciaService";
-// ✅ 1. Importado da pasta 'accessibility'
-import { useDarkMode } from "../accessibility/DarkModeContext";
+// ✅ CORREÇÃO: Revertendo para caminhos relativos COM extensão
+import { getUser } from "../utils/auth.ts";
+import { Usuario, Emergencia } from "../services/types.ts";
+import EmergenciaService from "../services/EmergenciaService.ts";
+import { useDarkMode } from "../accessibility/DarkModeContext.tsx";
 
 export default function Home() {
-  // ✅ 2. O 'darkMode' agora vem do Contexto Global (corrigido)
   const { darkMode } = useDarkMode();
   const [user, setUser] = useState<Pick<
     Usuario,
     "id" | "name" | "email" | "tipo"
   > | null>(getUser());
-  const navigate = useNavigate(); // ✅ Hook de navegação
+  const navigate = useNavigate();
 
-  // ✅ --- Novo Estado para o Pop-up ---
   const [activeEmergency, setActiveEmergency] = useState<Emergencia | null>(
     null
   );
   const [isCheckingEmergency, setIsCheckingEmergency] = useState(true);
-  // --- Fim do Novo Estado ---
 
   useEffect(() => {
     const handleStorageChange = () => {
@@ -52,7 +49,6 @@ export default function Home() {
     };
   }, []);
 
-  // ✅ --- useEffect para buscar emergências ativas (CORRIGIDO) ---
   useEffect(() => {
     // Só executa se o utilizador for um tutor logado
     if (user && user.tipo === "tutor") {
@@ -70,7 +66,7 @@ export default function Home() {
             "assigned",
             "accepted",
             "em_atendimento",
-            "pendente", // ✅ Correção para o pop-up
+            "pendente",
           ];
 
           // 3. Encontra a primeira emergência que esteja ativa
@@ -82,7 +78,6 @@ export default function Home() {
           if (firstActive) {
             // Tenta carregar os dados do pet (pois o 'meus' pode não vir com eles)
             if (firstActive.pet_id && !firstActive.pet) {
-              // Esta é uma chamada "best-effort", não bloqueia o pop-up
               try {
                 // A rota 'show' de pets é pública
                 const petRes = await fetch(
@@ -108,28 +103,23 @@ export default function Home() {
           setIsCheckingEmergency(false);
         }
       })();
-    // ✅ --- Lógica para utilizador anónimo (REESCRITA) ---
     } else if (!user) {
       // Se o utilizador está deslogado, verifica o localStorage
       setIsCheckingEmergency(true);
       (async () => {
         try {
-          // 1. Procura pelo ID genérico que o hook (agora corrigido) salva
           const anonEmergencyId = localStorage.getItem("anonymousEmergencyId");
           
           if (anonEmergencyId) {
-            // 2. Usa esse ID para encontrar o UUID público
             const publicUuid = localStorage.getItem(`emerg_public_uuid_${anonEmergencyId}`);
 
             if (!publicUuid) {
-              // Se não tem UUID, não podemos buscar. Limpa.
               localStorage.removeItem("anonymousEmergencyId");
               localStorage.removeItem("anonymousEmergencyPetName");
               setIsCheckingEmergency(false);
               return;
             }
 
-            // 3. Usa a rota PÚBLICA com o UUID para buscar os dados
             const { emergencia: emgData } = await EmergenciaService.getPublicByUuid(publicUuid);
 
             const activeStatus: Emergencia["status"][] = [
@@ -141,12 +131,10 @@ export default function Home() {
             ];
 
             if (activeStatus.includes(emgData.status)) {
-              // 4. Emergência ativa, mostra o pop-up
               const petName = localStorage.getItem("anonymousEmergencyPetName");
               emgData.pet = { nome: petName || "seu pet" };
               setActiveEmergency(emgData);
             } else {
-              // 5. Emergência inativa, limpa TODOS os dados
               localStorage.removeItem("anonymousEmergencyId");
               localStorage.removeItem("anonymousEmergencyPetName");
               localStorage.removeItem(`emerg_public_uuid_${anonEmergencyId}`);
@@ -155,7 +143,6 @@ export default function Home() {
           }
         } catch (error) {
           console.error("Erro ao verificar emergência anónima:", error);
-          // 6. Limpa tudo em caso de erro (ex: 404)
           const anonEmergencyId = localStorage.getItem("anonymousEmergencyId");
           if (anonEmergencyId) {
             localStorage.removeItem("anonymousEmergencyId");
@@ -167,26 +154,23 @@ export default function Home() {
           setIsCheckingEmergency(false);
         }
       })();
-      // ✅ --- FIM DA CORREÇÃO ---
     } else {
       setIsCheckingEmergency(false); // Não é tutor, não verifica
     }
   }, [user]);
-  // --- Fim do novo useEffect ---
 
   const buttonClass = (isPrimary: boolean) =>
     `block w-full sm:w-auto text-center px-8 py-3 rounded-xl text-white font-semibold shadow-md hover:shadow-lg transition 
-     ${
-       isPrimary
-         ? darkMode
-           ? "bg-teal-600 hover:bg-teal-500"
-           : "bg-[#25A18E] hover:bg-[#208B7C]"
-         : darkMode
-         ? "bg-gray-700 hover:bg-gray-600"
-         : "bg-[#004E64] hover:bg-[#003b50]"
-     }`;
+    ${
+      isPrimary
+        ? darkMode
+          ? "bg-teal-600 hover:bg-teal-500"
+          : "bg-[#25A18E] hover:bg-[#208B7C]"
+        : darkMode
+        ? "bg-gray-700 hover:bg-gray-600"
+        : "bg-[#004E64] hover:bg-[#003b50]"
+    }`;
 
-  // Função para renderizar o conteúdo do HERO (Inalterada)
   const renderHomeContent = (): ReactNode => {
     const userType = user?.tipo;
     const titleProps = {
@@ -273,7 +257,6 @@ export default function Home() {
     }
   };
 
-  // Função para renderizar os BOTÕES do HERO (Inalterada)
   const renderHomeButtons = () => {
     if (user) {
       // Usuário logado: Botão IR PARA DASHBOARD
@@ -337,12 +320,12 @@ export default function Home() {
   return (
     <div
       className={`min-h-screen flex flex-col relative overflow-hidden transition-colors duration-300
-       ${darkMode ? "bg-gray-900 text-white" : "bg-white text-[#004E64]"}`}
+      ${darkMode ? "bg-gray-900 text-white" : "bg-white text-[#004E64]"}`}
     >
       <Navbar />
 
       <main className="flex-1">
-        {/* === SEÇÃO 1: HERO (Layout Atualizado) === */}
+        {/* === SEÇÃO 1: HERO === */}
         <section
           className={`flex flex-col lg:flex-row items-center justify-center pt-32 lg:pt-40 pb-16 lg:pb-24 px-6 gap-12 lg:gap-16
           ${
@@ -351,9 +334,8 @@ export default function Home() {
               : "bg-gradient-to-br from-[#004E64] to-[#25A18E]"
           }`}
         >
-          {/* Card principal (Sem alterações, mas o container mudou) */}
           <motion.div
-            className="flex justify-center items-start w-full lg:w-1/2 xl:w-5/12" // Ajustado para xl:w-5/12
+            className="flex justify-center items-start w-full lg:w-1/2 xl:w-5/12"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -366,7 +348,7 @@ export default function Home() {
                 ${
                   darkMode
                     ? "bg-gray-800 border-gray-700 before:bg-gray-700"
-                    : "bg-white border-[#25A18E] before:bg-[#25A18E]" // ✅ Correção do erro de digitação
+                    : "bg-white border-[#25A18E] before:bg-[#25A18E]"
                 }`}
             >
               {renderHomeContent()}
@@ -376,15 +358,14 @@ export default function Home() {
             </div>
           </motion.div>
 
-          {/* Imagem (Estilo e Tamanho Melhorados) */}
           <motion.div
-            className="w-full lg:w-1/2 xl:w-5/12 flex items-center justify-center" // Ajustado para xl:w-5/12
+            className="w-full lg:w-1/2 xl:w-5/12 flex items-center justify-center"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.6, duration: 0.6 }}
           >
             <img
-              src="/img-home.jpg" // ✅ 3. Caminho da pasta 'public' (corrigido)
+              src="/img-home.jpg"
               alt="Veterinário atendendo pet"
               loading="lazy"
               className="w-full h-auto max-h-[500px] rounded-2xl shadow-2xl object-cover transition-all duration-500 hover:scale-105"
@@ -392,11 +373,16 @@ export default function Home() {
           </motion.div>
         </section>
 
-        {/* === SEÇÃO 2: COMO FUNCIONA (NOVO) === */}
-        <section className="py-16 sm:py-24 bg-white text-center">
+        {/* # ===============================================
+        #  ✅ INÍCIO DA ATUALIZAÇÃO "BEM BONITO"
+        # ===============================================
+        */}
+        
+        {/* === SEÇÃO 2: COMO FUNCIONA (Estilo A) === */}
+        <section className={`py-16 sm:py-24 text-center ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
           <div className="container mx-auto px-6 max-w-6xl">
             <motion.h2
-              className="text-3xl sm:text-4xl font-extrabold text-center text-[#004E64] mb-4"
+              className={`text-3xl sm:text-4xl font-extrabold text-center mb-4 ${darkMode ? 'text-white' : 'text-[#004E64]'}`}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.5 }}
@@ -405,7 +391,7 @@ export default function Home() {
               Como o oBomVet Funciona?
             </motion.h2>
             <motion.p
-              className="text-lg text-gray-600 mb-12 max-w-2xl mx-auto"
+              className={`text-lg mb-12 max-w-2xl mx-auto ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.5 }}
@@ -414,69 +400,98 @@ export default function Home() {
               Em 3 passos simples, conectamos você ao atendimento veterinário.
             </motion.p>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Grid com 5 colunas no desktop: 3 cards e 2 setas conectoras */}
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-8 items-center">
+              
               {/* Step 1 */}
               <motion.div
-                className="flex flex-col items-center"
+                className={`flex flex-col items-center p-6 rounded-xl shadow-lg border h-full
+                            ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'}`}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.5 }}
                 transition={{ duration: 0.5, delay: 0.2 }}
               >
-                <div className="flex items-center justify-center w-20 h-20 bg-red-100 rounded-full border-4 border-white shadow-md mb-4">
+                <div className="flex items-center justify-center w-20 h-20 bg-red-100 rounded-full border-4 border-white shadow-md mb-4 flex-shrink-0">
                   <AlertTriangle
                     className="w-10 h-10 text-red-600"
                     aria-hidden="true"
                   />
                 </div>
-                <h3 className="text-xl font-bold text-[#004E64] mb-2">
+                <h3 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-[#004E64]'}`}>
                   1. Relate a Emergência
                 </h3>
-                <p className="text-gray-600">
+                <p className={darkMode ? 'text-gray-300' : 'text-gray-600'}>
                   Descreva os sintomas do seu pet. Use áudio, texto ou nossos
-                  botões de pânico para um relato rápido e detalhado.
+                  botões de pânico para um relato rápido.
                 </p>
               </motion.div>
-              {/* Step 2 */}
+
+              {/* Seta Conectora 1 (Desktop) */}
               <motion.div
-                className="flex flex-col items-center"
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                className={`hidden md:flex items-center justify-center ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}
+                initial={{ opacity: 0, scale: 0.5 }}
+                whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true, amount: 0.5 }}
                 transition={{ duration: 0.5, delay: 0.3 }}
               >
-                <div className="flex items-center justify-center w-20 h-20 bg-blue-100 rounded-full border-4 border-white shadow-md mb-4">
-                  <MapPin
-                    className="w-10 h-10 text-blue-600"
-                    aria-hidden="true"
-                  />
-                </div>
-                <h3 className="text-xl font-bold text-[#004E64] mb-2">
-                  2. Encontre Ajuda
-                </h3>
-                <p className="text-gray-600">
-                  Nossa plataforma usa sua localização para encontrar e notificar
-                  a clínica 24h ou veterinário autônomo mais próximo.
-                </p>
+                <ArrowRight size={40} strokeWidth={1} />
               </motion.div>
-              {/* Step 3 */}
+
+              {/* Step 2 */}
               <motion.div
-                className="flex flex-col items-center"
+                className={`flex flex-col items-center p-6 rounded-xl shadow-lg border h-full
+                            ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'}`}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.5 }}
                 transition={{ duration: 0.5, delay: 0.4 }}
               >
-                <div className="flex items-center justify-center w-20 h-20 bg-teal-100 rounded-full border-4 border-white shadow-md mb-4">
+                <div className="flex items-center justify-center w-20 h-20 bg-blue-100 rounded-full border-4 border-white shadow-md mb-4 flex-shrink-0">
+                  <MapPin
+                    className="w-10 h-10 text-blue-600"
+                    aria-hidden="true"
+                  />
+                </div>
+                <h3 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-[#004E64]'}`}>
+                  2. Encontre Ajuda
+                </h3>
+                <p className={darkMode ? 'text-gray-300' : 'text-gray-600'}>
+                  Nossa plataforma usa sua localização para encontrar e notificar
+                  a clínica 24h mais próxima.
+                </p>
+              </motion.div>
+
+              {/* Seta Conectora 2 (Desktop) */}
+              <motion.div
+                className={`hidden md:flex items-center justify-center ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}
+                initial={{ opacity: 0, scale: 0.5 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true, amount: 0.5 }}
+                transition={{ duration: 0.5, delay: 0.5 }}
+              >
+                 <ArrowRight size={40} strokeWidth={1} />
+              </motion.div>
+
+              {/* Step 3 */}
+              <motion.div
+                className={`flex flex-col items-center p-6 rounded-xl shadow-lg border h-full
+                            ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'}`}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.5 }}
+                transition={{ duration: 0.5, delay: 0.6 }}
+              >
+                <div className="flex items-center justify-center w-20 h-20 bg-teal-100 rounded-full border-4 border-white shadow-md mb-4 flex-shrink-0">
                   <HeartPulse
                     className="w-10 h-10 text-[#208B7C]"
                     aria-hidden="true"
                   />
                 </div>
-                <h3 className="text-xl font-bold text-[#004E64] mb-2">
+                <h3 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-[#004E64]'}`}>
                   3. Seja Atendido
                 </h3>
-                <p className="text-gray-600">
+                <p className={darkMode ? 'text-gray-300' : 'text-gray-600'}>
                   A clínica recebe seu relatório e se prepara para sua chegada,
                   economizando tempo vital no atendimento.
                 </p>
@@ -485,11 +500,11 @@ export default function Home() {
           </div>
         </section>
 
-        {/* === SEÇÃO 3: FUNCIONALIDADES (NOVO) === */}
-        <section className="py-16 sm:py-24 bg-gray-50">
+        {/* === SEÇÃO 3: FUNCIONALIDADES (Estilo B) === */}
+        <section className={`py-16 sm:py-24 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
           <div className="container mx-auto px-6 max-w-6xl">
             <motion.h2
-              className="text-3xl sm:text-4xl font-extrabold text-center text-[#004E64] mb-12"
+              className={`text-3xl sm:text-4xl font-extrabold text-center mb-12 ${darkMode ? 'text-white' : 'text-[#004E64]'}`}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.5 }}
@@ -498,9 +513,11 @@ export default function Home() {
               Uma plataforma completa
             </motion.h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* Feature 1 */}
+              
+              {/* Feature 1 (Estilo atualizado) */}
               <motion.div
-                className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow"
+                className={`p-6 rounded-xl border hover:shadow-lg transition-shadow duration-300
+                            ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.5 }}
@@ -510,17 +527,19 @@ export default function Home() {
                   className="w-10 h-10 text-[#25A18E] mb-3"
                   aria-hidden="true"
                 />
-                <h3 className="text-lg font-bold text-[#004E64] mb-1">
+                <h3 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-[#004E64]'}`}>
                   Gestão de Pets
                 </h3>
-                <p className="text-gray-600 text-sm">
+                <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                   Mantenha o histórico e os dados dos seus animais em um só
                   lugar.
                 </p>
               </motion.div>
-              {/* Feature 2 */}
+              
+              {/* Feature 2 (Estilo atualizado) */}
               <motion.div
-                className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow"
+                 className={`p-6 rounded-xl border hover:shadow-lg transition-shadow duration-300
+                            ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.5 }}
@@ -530,17 +549,19 @@ export default function Home() {
                   className="w-10 h-10 text-[#25A18E] mb-3"
                   aria-hidden="true"
                 />
-                <h3 className="text-lg font-bold text-[#004E64] mb-1">
+                <h3 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-[#004E64]'}`}>
                   Alertas Instantâneos
                 </h3>
-                <p className="text-gray-600 text-sm">
+                <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                   Notifique clínicas e veterinários sobre sua emergência em tempo
                   real.
                 </p>
               </motion.div>
-              {/* Feature 3 */}
+              
+              {/* Feature 3 (Estilo atualizado) */}
               <motion.div
-                className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow"
+                 className={`p-6 rounded-xl border hover:shadow-lg transition-shadow duration-300
+                            ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.5 }}
@@ -550,17 +571,19 @@ export default function Home() {
                   className="w-10 h-10 text-[#25A18E] mb-3"
                   aria-hidden="true"
                 />
-                <h3 className="text-lg font-bold text-[#004E64] mb-1">
+                <h3 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-[#004E64]'}`}>
                   Catálogo de Clínicas
                 </h3>
-                <p className="text-gray-600 text-sm">
+                <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                   Encontre clínicas e veterinários autônomos perto de você no
                   mapa.
                 </p>
               </motion.div>
-              {/* Feature 4 */}
+              
+              {/* Feature 4 (Estilo atualizado) */}
               <motion.div
-                className="bg-white p-6 rounded-xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow"
+                 className={`p-6 rounded-xl border hover:shadow-lg transition-shadow duration-300
+                            ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`}
                 initial={{ opacity: 0, y: 30 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.5 }}
@@ -570,10 +593,10 @@ export default function Home() {
                   className="w-10 h-10 text-[#25A18E] mb-3"
                   aria-hidden="true"
                 />
-                <h3 className="text-lg font-bold text-[#004E64] mb-1">
+                <h3 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-[#004E64]'}`}>
                   Seguro e Privado
                 </h3>
-                <p className="text-gray-600 text-sm">
+                <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                   Seus dados só são compartilhados com a clínica que aceitar o
                   caso.
                 </p>
@@ -581,18 +604,48 @@ export default function Home() {
             </div>
           </div>
         </section>
+        
+        {/* # ===============================================
+        #  ✅ FIM DA ATUALIZAÇÃO "BEM BONITO"
+        # ===============================================
+        */}
       </main>
       {/* Fim do <main> */}
 
-      {/* Lógica de exibição dos botões de emergência (correta) */}
-      {(!user || user.tipo === "tutor") && (
-        <>
-          {/* Botão de EMERGÊNCIA flutuante — versão desktop */}
+      {/* Container unificado para os botões flutuantes (Sem alterações) */}
+      <div className="fixed z-50 bottom-6 right-6 sm:bottom-8 sm:right-8 flex flex-col items-end gap-4">
+        
+        {/* Botão Clínicas Próximas (Visível para todos) */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.3, type: "spring", stiffness: 100 }}
+        >
+          <Link to="/clinicPage" aria-label="Ver clínicas próximas no mapa">
+            <motion.button
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.95 }}
+              className="
+                flex items-center justify-center 
+                bg-gradient-to-r from-blue-600 to-teal-500 
+                text-white font-bold 
+                shadow-lg hover:shadow-xl transition-all duration-300
+                h-14 w-14 rounded-full   /* Estilo Mobile: Ícone */
+                sm:h-auto sm:w-auto sm:py-4 sm:px-6 /* Estilo Desktop: Expandido */
+              "
+            >
+              <MapPin className="w-6 h-6" aria-hidden="true" />
+              <span className="hidden sm:inline ml-2">Clínicas Próximas</span>
+            </motion.button>
+          </Link>
+        </motion.div>
+
+        {/* Botão de EMERGÊNCIA (Apenas para tutores / deslogados) */}
+        {(!user || user.tipo === "tutor") && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 1, type: "spring" }}
-            className="hidden sm:flex fixed z-50 bottom-8 right-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1, type: "spring", stiffness: 100 }}
           >
             <Link to="/reportInput" aria-label="Relatar uma nova emergência">
               <motion.button
@@ -607,107 +660,36 @@ export default function Home() {
                     "0 0 0 rgba(239,68,68,0.5)",
                   ],
                 }}
-                transition={{ duration: 1.8, repeat: Infinity }}
+                transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
                 className="
-                  flex items-center justify-center gap-3
-                  px-8 py-5 rounded-full text-white font-bold text-lg
-                  bg-gradient-to-r from-red-600 to-red-500
-                  shadow-[0_0_25px_rgba(239,68,68,0.8)]
-                  hover:shadow-[0_0_35px_rgba(239,68,68,1)]
+                  flex items-center justify-center 
+                  bg-gradient-to-r from-red-600 to-red-500 
+                  text-white font-bold 
+                  shadow-[0_0_25px_rgba(239,68,68,0.8)] hover:shadow-[0_0_35px_rgba(239,68,68,1)]
                   transition-all duration-300
+                  h-16 w-16 rounded-full /* Estilo Mobile: Ícone (maior) */
+                  sm:h-auto sm:w-auto sm:py-5 sm:px-8 sm:text-lg /* Estilo Desktop: Expandido */
                 "
               >
-                <AlertTriangle
-                  className="w-7 h-7"
-                  aria-hidden="true"
-                />
-                EMERGÊNCIA
+                <Siren className="w-7 h-7" aria-hidden="true" /> 
+                <span className="hidden sm:inline ml-3">EMERGÊNCIA</span>
               </motion.button>
             </Link>
           </motion.div>
+        )}
 
-          {/* Botão estilo “fitinha” — versão mobile */}
-          <motion.div
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 1 }}
-            className="sm:hidden fixed top-1/3 right-0 z-50 rotate-[-90deg] origin-bottom-right"
-          >
-            <Link to="/reportInput" aria-label="Relatar uma nova emergência">
-              <motion.div
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-                className="
-                  flex items-center gap-2
-                  bg-gradient-to-r from-red-600 to-red-500
-                  text-white font-bold px-4 py-2 rounded-t-lg
-                  shadow-[0_0_15px_rgba(239,68,68,0.7)]
-                  hover:shadow-[0_0_25px_rgba(239,68,68,1)]
-                  transition-all duration-300
-                "
-              >
-                <AlertTriangle className="w-5 h-5" aria-hidden="true" />
-                <span>EMERGÊNCIA</span>
-              </motion.div>
-            </Link>
-          </motion.div>
-        </>
-      )}
-
-      {/* Botões "Clínicas Próximas" (Visível para todos) */}
-
-      {/* FAB para abrir o mapa de clínicas — versão mobile */}
-      <motion.div
-        initial={{ opacity: 0, x: 50 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ delay: 1.3 }}
-        className="sm:hidden fixed top-1/2 right-0 z-60 rotate-[-90deg] origin-bottom-right"
-      >
-        <Link to="/clinicPage" aria-label="Ver clínicas próximas no mapa">
-          <motion.div
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.95 }}
-            className="
-              flex items-center gap-2
-              bg-gradient-to-r from-blue-600 to-teal-500
-              text-white font-bold px-4 py-2 rounded-t-lg
-              shadow-[0_0_15px_rgba(0,128,255,0.7)]
-              hover:shadow-[0_0_25px_rgba(0,128,255,1)]
-              transition-all duration-300
-            "
-          >
-            <MapPin className="w-5 h-5" aria-hidden="true" />
-            <span>Clínicas Próximas</span>
-          </motion.div>
-        </Link>
-      </motion.div>
-
-      {/* Botão Clínicas Desktop */}
-      <motion.div className="hidden sm:flex fixed z-60 bottom-32 right-8">
-        <Link to="/clinicPage" aria-label="Ver clínicas próximas no mapa">
-          <motion.button
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.95 }}
-            className="flex items-center gap-2 px-6 py-4 rounded-full text-white font-bold text-lg
-                bg-gradient-to-r from-blue-600 to-teal-500 shadow-lg hover:shadow-xl
-                transition-all duration-300"
-          >
-            <MapPin className="w-6 h-6" aria-hidden="true" />
-            Clínicas Próximas
-          </motion.button>
-        </Link>
-      </motion.div>
+      </div>
 
       {/* Card de instalação PWA */}
       <InstallPwaCard />
 
-      {/* ✅ --- POP-UP DE EMERGÊNCIA ATIVA --- */}
+      {/* POP-UP DE EMERGÊNCIA ATIVA */}
       <AnimatePresence>
         {!isCheckingEmergency && activeEmergency && (
           <motion.div
-            role="dialog" // Informa que é uma caixa de diálogo
-            aria-modal="true" // Informa que o conteúdo atrás está "preso"
-            aria-labelledby="popup-title" // Associa o título (ver h3)
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="popup-title"
             className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] w-full max-w-sm sm:max-w-md p-4"
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
@@ -736,13 +718,13 @@ export default function Home() {
               <button
                 onClick={() => navigate(`/emergencia/${activeEmergency.id}`)}
                 className="flex-shrink-0 bg-red-600 text-white p-2 rounded-lg hover:bg-red-700 transition"
-                title="Acompanhar" // Title é bom para rato
-                aria-label="Acompanhar emergência ativa" // aria-label é lido
+                title="Acompanhar"
+                aria-label="Acompanhar emergência ativa"
               >
                 <ArrowRight className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
               <button
-                onClick={() => setActiveEmergency(null)} // Fecha o pop-up
+                onClick={() => setActiveEmergency(null)}
                 className="absolute -top-2 -right-2 w-7 h-7 bg-gray-200 text-gray-700 rounded-full flex items-center justify-center border-2 border-white hover:bg-gray-300"
                 title="Fechar"
                 aria-label="Fechar pop-up de emergência ativa"

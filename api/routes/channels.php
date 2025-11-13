@@ -2,26 +2,16 @@
 
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Log;
-use App\Models\Usuario; // Importa o modelo de Usuário
+use App\Models\Usuario;
+use App\Models\Clinica;
+use App\Models\Tutor;
+use App\Models\Veterinario;
 
-/*
-|--------------------------------------------------------------------------
-| Canals de Broadcast
-|--------------------------------------------------------------------------
-|
-| Aqui você pode registrar todos os canais de broadcast de eventos que
-| sua aplicação suporta.
-|
-*/
+Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
+    return (int) $user->id === (int) $id;
+});
 
-/**
- * Canal para UMA clínica específica.
- * O frontend vai assinar: echo.private('clinicas.123')
- * O Evento (NovaEmergencia) [cite: app/Events/NovaEmergencia.php] vai disparar em: new PrivateChannel('clinicas.123')
- */
 Broadcast::channel('clinicas.{clinicaId}', function (Usuario $user, $clinicaId) {
-    // Apenas o usuário logado que pertence a ESTA clínica pode ouvir.
-    // Carrega a relação clinica se não estiver carregada
     if (!$user->relationLoaded('clinica')) {
         $user->load('clinica');
     }
@@ -39,14 +29,7 @@ Broadcast::channel('clinicas.{clinicaId}', function (Usuario $user, $clinicaId) 
     return false;
 });
 
-/**
- * Canal para UMA clínica específica (para atualizações de emergência)
- * O frontend vai assinar: echo.private('emergencias.clinica.123')
- * O Evento (EmergenciaAtualizada) [cite: app/Events/EmergenciaAtualizada.php] vai disparar em: new Channel('emergencias.clinica.123')
- */
 Broadcast::channel('emergencias.clinica.{clinicaId}', function (Usuario $user, $clinicaId) {
-    // Mesma lógica: só o usuário da clínica pode ouvir
-    // Carrega a relação clinica se não estiver carregada
     if (!$user->relationLoaded('clinica')) {
         $user->load('clinica');
     }
@@ -64,14 +47,7 @@ Broadcast::channel('emergencias.clinica.{clinicaId}', function (Usuario $user, $
     return false;
 });
 
-/**
- * Canal para UM tutor específico.
- * O frontend (acompanhamentoEmergencia.tsx) [cite: src/pages/acompanhamentoEmergencia.tsx] vai assinar: echo.private('emergencias.tutor.456')
- * O Evento (EmergenciaAtualizada) [cite: app/Events/EmergenciaAtualizada.php] vai disparar em: new Channel('emergencias.tutor.456')
- */
 Broadcast::channel('emergencias.tutor.{tutorId}', function (Usuario $user, $tutorId) {
-    // Apenas o usuário logado que pertence a ESTE tutor pode ouvir.
-    // Carrega a relação tutor se não estiver carregada
     if (!$user->relationLoaded('tutor')) {
         $user->load('tutor');
     }
@@ -89,11 +65,25 @@ Broadcast::channel('emergencias.tutor.{tutorId}', function (Usuario $user, $tuto
     return false;
 });
 
-// Os canais genéricos abaixo não são usados pelos eventos de emergência
-// e podem ser removidos se você não os usar em outro lugar.
-// Vou mantê-los, como você pediu para "não remover".
+Broadcast::channel('veterinario.{veterinarioId}', function (Usuario $user, $veterinarioId) {
+    if (!$user->relationLoaded('veterinario')) {
+        $user->load('veterinario');
+    }
+
+    if ($user->tipo === 'veterinario' && $user->veterinario && $user->veterinario->id == $veterinarioId) {
+        Log::info("Usuário {$user->id} autorizado para canal veterinario.{$veterinarioId}");
+        return true;
+    }
+    
+    Log::warning("Usuário {$user->id} NÃO autorizado para canal veterinario.{$veterinarioId}", [
+         'user_type' => $user->tipo,
+         'user_vet_id' => $user->veterinario->id ?? null,
+         'expected_vet_id' => $veterinarioId,
+    ]);
+    return false;
+});
+
 Broadcast::channel('clinicas', function ($user) {
-    // Protege contra $user nulo ao logar
     Log::info('Tentativa de inscrição no canal clinicas (GENÉRICO)', [
         'user_id' => $user ? ($user->id ?? null) : null,
         'tipo' => $user ? ($user->tipo ?? 'não definido') : 'não definido',

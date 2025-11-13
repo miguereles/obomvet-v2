@@ -11,9 +11,8 @@ use PHPOpenSourceSaver\JWTAuth\Facades\JWTAuth;
 use PHPOpenSourceSaver\JWTAuth\Exceptions\JWTException;
 use Illuminate\Validation\ValidationException;
 
-// ✅ IMPORTS ADICIONADOS
-use Illuminate\Support\Facades\Log; // Para Log::info
-use Illuminate\Support\Facades\Auth; // Para auth()->user()
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 use App\Models\Tutor;
 use App\Models\Clinica;
 use App\Models\Veterinario;
@@ -22,6 +21,15 @@ use App\Models\Emergencia;
 
 class AuthController extends Controller
 {
+    /**
+     * (As rotas 'logout', 'refresh' e 'me' são protegidas
+     * individualmente no arquivo routes/api.php)
+     */
+    public function __construct()
+    {
+        // $this->middleware('auth:api', ['except' => ['login', 'register']]);
+    }
+
     /**
      * Registrar novo usuário (Tutor, Veterinário ou Clínica)
      */
@@ -143,7 +151,6 @@ class AuthController extends Controller
 
             $token = JWTAuth::fromUser($user);
 
-            // Carregamos o relacionamento baseado no tipo
             $user->load($user->tipo);
             
             $tipo_id = null;
@@ -202,7 +209,6 @@ class AuthController extends Controller
 
         $user = auth()->user();
         
-        // Carrega o relacionamento específico baseado no tipo
         if ($user->tipo === 'clinica') {
             $user->clinica = Clinica::where('usuario_id', $user->id)->first();
         } elseif ($user->tipo === 'veterinario') {
@@ -214,18 +220,16 @@ class AuthController extends Controller
         $response = [
             'access_token' => $token,
             'token_type' => 'bearer',
-            'expires_in' => JWTAuth::factory()->getTTL() * 60,
+            'expires_in' => JWTAuth::factory()->getTTL() * 60, // Em segundos
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
             'tipo' => $user->tipo,
         ];
 
-        // Adiciona o OBJETO aninhado completo ao invés de apenas o ID.
-        // O frontend (AuthService) salvará isso no localStorage.
         if ($user->tipo === 'clinica' && $user->clinica) {
-            $response['clinica'] = $user->clinica; // Envia o objeto 'clinica'
-            $response['clinica_id'] = $user->clinica->id; // Mantém o ID por redundância
+            $response['clinica'] = $user->clinica;
+            $response['clinica_id'] = $user->clinica->id;
         } elseif ($user->tipo === 'veterinario' && $user->veterinario) {
             $response['veterinario'] = $user->veterinario;
             $response['veterinario_id'] = $user->veterinario->id;
@@ -242,7 +246,8 @@ class AuthController extends Controller
             'tutor_id' => $user->tutor->id ?? null
         ]);
 
-        return response()->json($response);
+        // Utiliza o método helper para formatar a resposta
+        return $this->respondWithToken($token, $response);
     }
 
     public function logout(Request $request)
@@ -261,6 +266,40 @@ class AuthController extends Controller
     public function me()
     {
         return response()->json(auth()->user());
+    }
+
+    /**
+     * Renova um token expirado (dentro da janela de refresh_ttl).
+     * ROTA: POST /auth/refresh
+     */
+    public function refresh()
+    {
+        try {
+            $newToken = auth('api')->refresh(true, true);
+            return $this->respondWithToken($newToken, [
+                'message' => 'Token renovado'
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Token não pode ser renovado', 
+                'details' => $e->getMessage()
+            ], 401);
+        }
+    }
+
+    /**
+     * Formata a resposta padrão do token.
+     */
+    protected function respondWithToken($token, $data = [])
+    {
+        $defaultData = [
+            'access_token' => $token,
+            'token_type' => 'bearer',
+            'expires_in' => auth('api')->factory()->getTTL() * 60 // Em segundos
+        ];
+
+        return response()->json(array_merge($defaultData, $data));
     }
 
     /**
