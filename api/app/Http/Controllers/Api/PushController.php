@@ -7,26 +7,48 @@ use Illuminate\Http\Request;
 use Minishlink\WebPush\WebPush;
 use Minishlink\WebPush\Subscription;
 use App\Models\Usuario;
+use App\Models\Tutor; // [LINHA ADICIONADA]
+use Illuminate\Support\Facades\Auth; // [LINHA ADICIONADA]
 use Illuminate\Support\Facades\Log;
 
 class PushController extends Controller
 {
     /**
-     * Salva a assinatura Web Push do usuário autenticado.
+     * [MÉTODO ATUALIZADO]
+     * Salva a assinatura Web Push no Tutor (logado ou anónimo).
      */
     public function store(Request $request)
     {
-        $user = $request->user();
-
         $validated = $request->validate([
             'endpoint' => 'required|string',
             'keys' => 'required|array',
             'keys.auth' => 'required|string',
             'keys.p256dh' => 'required|string',
+            // O frontend DEVE enviar um destes dois:
+            'tutor_token' => 'nullable|string|exists:tutors,anonymous_edit_token',
         ]);
 
-        $user->push_subscription = $validated;
-        $user->save();
+        $notifiableTutor = null;
+
+        // Caso 1: Utilizador está logado
+        $user = Auth::guard('api')->user();
+        if ($user && $user->tutor) {
+            $notifiableTutor = $user->tutor;
+        } 
+        // Caso 2: Utilizador é anónimo (ex: página de acompanhamento)
+        // O frontend (useRegisterPush.ts) deve enviar o token anónimo do tutor
+        else if ($request->tutor_token) {
+            $notifiableTutor = Tutor::where('anonymous_edit_token', $request->tutor_token)->first();
+        }
+
+        // Se não encontrou nem logado nem anónimo, falha.
+        if (!$notifiableTutor) {
+            return response()->json(['message' => 'Não foi possível identificar o subscritor.'], 404);
+        }
+
+        // Salva a subscrição na coluna 'push_subscription' do *Tutor*
+        $notifiableTutor->push_subscription = $validated;
+        $notifiableTutor->save();
 
         return response()->json(['message' => 'Subscription salva com sucesso.']);
     }
@@ -34,6 +56,8 @@ class PushController extends Controller
     /**
      * Envia uma notificação Web Push para todos os usuários com subscription válida.
      * Remove automaticamente as que falharem.
+     * * [NOTA: Este método 'send' não é usado pelo fluxo de emergência,
+     * mas é mantido como estava, pois ele procura em 'usuarios']
      */
     public function send(Request $request)
     {
@@ -49,7 +73,7 @@ class PushController extends Controller
             'url' => $request->url ?? '/',
         ]);
 
-        // Busca todos os usuários com subscription salva
+        // Busca todos os usuários com subscription salva (Lógica antiga mantida)
         $users = Usuario::whereNotNull('push_subscription')->get();
 
         $webPush = new WebPush([
@@ -65,6 +89,7 @@ class PushController extends Controller
 
         foreach ($users as $user) {
             try {
+                // Tenta enviar para a subscrição do *Usuário*
                 $subscription = Subscription::create($user->push_subscription);
                 $report = $webPush->sendOneNotification($subscription, $payload);
 
@@ -85,6 +110,33 @@ class PushController extends Controller
                 }
             } catch (\Exception $e) {
                 Log::error("Exceção WebPush para {$user->id}: " . $e->getMessage());
+            }
+        }
+        
+        // [LÓGICA ADICIONADA PARA TUTORES ANÓNIMOS]
+        // (Se você quiser que este método 'send' genérico também funcione para eles)
+        $tutors = Tutor::whereNull('usuario_id')->whereNotNull('push_subscription')->get();
+        foreach ($tutors as $tutor) {
+             try {
+                // Tenta enviar para a subscrição do *Tutor*
+                $subscription = Subscription::create($tutor->push_subscription);
+                $report = $webPush->sendOneNotification($subscription, $payload);
+
+                if ($report->isSuccess()) {
+                    $successCount++;
+                } else {
+                    $statusCode = $report->getResponse()?->getStatusCode();
+                    if (in_array($statusCode, [404, 410])) {
+                        $tutor->push_subscription = null;
+                        $tutor->save();
+                        $invalidCount++;
+                        Log::warning("Subscription inválida removida para o tutor {$tutor->id}");
+                    } else {
+                        Log::error("Erro enviando push para {$tutor->id}: " . $report->getReason());
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error("Exceção WebPush para {$tutor->id}: " . $e->getMessage());
             }
         }
 

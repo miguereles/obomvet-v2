@@ -8,13 +8,9 @@ const UsuarioService = {
    * Rota: GET /usuarios/{id} (de routes/api.php)
    */
   getById: async (id: string | number): Promise<Usuario> => {
-    // ✅ CORREÇÃO: Adicionamos 'params' para pedir ao backend (Laravel)
-    // que inclua os relacionamentos 'clinica' e 'veterinario' no JSON.
-    const { data } = await api.get<Usuario>(`/usuarios/${id}`, {
-      params: {
-        with: ['clinica', 'veterinario']
-      }
-    });
+    // ✅ CORREÇÃO: Removidos os 'params'. O backend (UsuarioController@show)
+    // já carrega 'tutor', 'clinica' e 'veterinario' por padrão.
+    const { data } = await api.get<Usuario>(`/usuarios/${id}`);
     return data;
   }
 };

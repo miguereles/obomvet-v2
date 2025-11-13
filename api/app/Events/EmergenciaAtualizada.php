@@ -8,6 +8,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Broadcasting\PrivateChannel; // [LINHA ADICIONADA]
 
 class EmergenciaAtualizada implements ShouldBroadcast
 {
@@ -24,14 +25,27 @@ class EmergenciaAtualizada implements ShouldBroadcast
     }
 
     /**
-     * Canal de broadcast — envia para canais privados da clínica e do tutor.
+     * [MÉTODO CORRIGIDO]
+     * Canal de broadcast — envia para canais PRIVADOS (para logados)
+     * E para o canal PÚBLICO (para anónimos) se o UUID existir.
      */
     public function broadcastOn()
     {
-        return [
-            new Channel('emergencias.clinica.' . $this->emergencia->clinica_id),
-            new Channel('emergencias.tutor.' . $this->emergencia->tutor_id),
+        // 1. Canais privados para utilizadores logados (Tutor e Clínica)
+        //    Isto corrige o bug de "não atualizar" para utilizadores logados.
+        $canais = [
+            new PrivateChannel('emergencias.clinica.' . $this->emergencia->clinica_id),
+            new PrivateChannel('emergencias.tutor.' . $this->emergencia->tutor_id),
         ];
+
+        // 2. [LÓGICA ADICIONADA]
+        //    Se esta emergência tiver um UUID público (criado no Controller),
+        //    transmite também para o canal público para o utilizador anónimo.
+        if (!empty($this->emergencia->public_uuid)) {
+            $canais[] = new Channel('emergencia.publica.' . $this->emergencia->public_uuid);
+        }
+
+        return $canais;
     }
 
     /**
@@ -58,7 +72,7 @@ class EmergenciaAtualizada implements ShouldBroadcast
             ],
             'tutor' => [
                 'id' => $this->emergencia->tutor->id ?? null,
-                'nome' => $this->emergencia->tutor->nome ?? 'Tutor',
+                'nome' => $this->emergencia->tutor->nome ?? 'Tutor', // [NOTA] O seu controller cria 'nome_completo', o evento envia 'nome'
             ],
             'pet' => [
                 'id' => $this->emergencia->pet->id ?? null,

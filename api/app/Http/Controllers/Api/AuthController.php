@@ -10,9 +10,13 @@ use Illuminate\Auth\Events\Registered;
 use PHPOpenSourceSaver\JWTAuth\Facades\JWTAuth;
 use PHPOpenSourceSaver\JWTAuth\Exceptions\JWTException;
 use Illuminate\Validation\ValidationException;
+
 // ✅ IMPORTS ADICIONADOS
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Log; // Para Log::info
+use Illuminate\Support\Facades\Auth; // Para auth()->user()
 use App\Models\Tutor;
+use App\Models\Clinica;
+use App\Models\Veterinario;
 use App\Models\Pet;
 use App\Models\Emergencia;
 
@@ -48,15 +52,12 @@ class AuthController extends Controller
                     'tipo' => 'required|in:veterinario',
                     'crmv' => 'required|string|unique:veterinarios,crmv',
                     'nome_completo' => 'required|string|max:255',
-                    // localizacao/address/area_atuacao are optional for public autonomous vets;
-                    // frontend may provide localizacao as "lat,lng" and area_atuacao as an object.
                     'localizacao' => 'nullable|string|max:255',
                     'especialidade' => 'nullable|string|max:255',
                     'telefone_emergencia' => 'nullable|string|max:20',
                     'disponivel_24h' => 'nullable|boolean',
                     'autonomo' => 'nullable|boolean',
                     'endereco' => 'nullable|string|max:255',
-                    // accept array/object directly (frontend sends JSON body), or null
                     'area_atuacao' => 'nullable',
                 ]),
                 'clinica' => $request->validate([
@@ -87,7 +88,6 @@ class AuthController extends Controller
 
 
             // Cria relação com o tipo específico
-            // Precompute veterinario-specific normalization
             $area = null;
             $localizacao = null;
             $lat = $lng = null;
@@ -117,7 +117,6 @@ class AuthController extends Controller
                     'especialidade' => $validated['especialidade'] ?? null,
                     'telefone_emergencia' => $validated['telefone_emergencia'] ?? null,
                     'disponivel_24h' => $validated['disponivel_24h'] ?? false,
-                    // default to true for public registrations unless explicitly false
                     'autonomo' => $validated['autonomo'] ?? true,
                     'endereco' => $validated['endereco'] ?? null,
                     'area_atuacao' => $area,
@@ -140,7 +139,6 @@ class AuthController extends Controller
 
             event(new Registered($user));
 
-            // ✅ LÓGICA DE REIVINDICAÇÃO ADICIONADA AQUI
             $this->reclaimAnonymousData($user);
 
             $token = JWTAuth::fromUser($user);
@@ -148,7 +146,6 @@ class AuthController extends Controller
             // Carregamos o relacionamento baseado no tipo
             $user->load($user->tipo);
             
-            // Preparamos o ID específico baseado no tipo
             $tipo_id = null;
             if ($user->tipo === 'clinica' && $user->clinica) {
                 $tipo_id = ['clinica_id' => $user->clinica->id];
@@ -206,7 +203,13 @@ class AuthController extends Controller
         $user = auth()->user();
         
         // Carrega o relacionamento específico baseado no tipo
-        $user->load($user->tipo);
+        if ($user->tipo === 'clinica') {
+            $user->clinica = Clinica::where('usuario_id', $user->id)->first();
+        } elseif ($user->tipo === 'veterinario') {
+            $user->veterinario = Veterinario::where('usuario_id', $user->id)->first();
+        } elseif ($user->tipo === 'tutor') {
+            $user->tutor = Tutor::where('usuario_id', $user->id)->first();
+        }
         
         $response = [
             'access_token' => $token,
@@ -218,17 +221,20 @@ class AuthController extends Controller
             'tipo' => $user->tipo,
         ];
 
-        // Adiciona o ID específico baseado no tipo
+        // Adiciona o OBJETO aninhado completo ao invés de apenas o ID.
+        // O frontend (AuthService) salvará isso no localStorage.
         if ($user->tipo === 'clinica' && $user->clinica) {
-            $response['clinica_id'] = $user->clinica->id;
+            $response['clinica'] = $user->clinica; // Envia o objeto 'clinica'
+            $response['clinica_id'] = $user->clinica->id; // Mantém o ID por redundância
         } elseif ($user->tipo === 'veterinario' && $user->veterinario) {
+            $response['veterinario'] = $user->veterinario;
             $response['veterinario_id'] = $user->veterinario->id;
         } elseif ($user->tipo === 'tutor' && $user->tutor) {
+            $response['tutor'] = $user->tutor;
             $response['tutor_id'] = $user->tutor->id;
         }
 
-        // Log para debug
-        \Log::info('Login response:', [
+        Log::info('Login response:', [
             'user_id' => $user->id,
             'tipo' => $user->tipo,
             'clinica_id' => $user->clinica->id ?? null,
@@ -257,13 +263,11 @@ class AuthController extends Controller
         return response()->json(auth()->user());
     }
 
-    // ✅ NOVA FUNÇÃO ADICIONADA
     /**
      * Transfere dados de um tutor anônimo (por e-mail) para um novo usuário tutor.
      */
     private function reclaimAnonymousData(Usuario $user)
     {
-        // Só executa se o novo usuário for um tutor
         if ($user->tipo !== 'tutor' || !$user->tutor) {
             return;
         }
@@ -271,24 +275,19 @@ class AuthController extends Controller
         $newTutor = $user->tutor;
         $email = $user->email;
 
-        // Procura por um tutor anônimo (sem usuario_id) com o mesmo e-mail de contato
         $anonymousTutor = Tutor::where('email_contato', $email)
-                               ->whereNull('usuario_id')
-                               ->first();
+                                ->whereNull('usuario_id')
+                                ->first();
 
-        // Se encontrou um tutor anônimo correspondente
         if ($anonymousTutor) {
             Log::info("Reivindicando dados anônimos para o novo usuário {$user->id} (Tutor: {$newTutor->id}) a partir do tutor anônimo {$anonymousTutor->id}");
 
-            // 1. Transfere os Pets
             Pet::where('tutor_id', $anonymousTutor->id)
-               ->update(['tutor_id' => $newTutor->id]);
+                ->update(['tutor_id' => $newTutor->id]);
 
-            // 2. Transfere as Emergências
             Emergencia::where('tutor_id', $anonymousTutor->id)
-                      ->update(['tutor_id' => $newTutor->id]);
+                        ->update(['tutor_id' => $newTutor->id]);
 
-            // 3. Remove o tutor anônimo
             $anonymousTutor->delete();
         }
     }

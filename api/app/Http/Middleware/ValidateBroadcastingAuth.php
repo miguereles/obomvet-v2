@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 use PHPOpenSourceSaver\JWTAuth\Facades\JWTAuth;
+use PHPOpenSourceSaver\JWTAuth\Exceptions\TokenExpiredException;
+use PHPOpenSourceSaver\JWTAuth\Exceptions\JWTException;
 
 class ValidateBroadcastingAuth
 {
@@ -22,43 +24,54 @@ class ValidateBroadcastingAuth
                 'ip' => $request->ip(),
             ]);
 
-            // Accept token from Authorization header OR as a fallback from the POST body
-            // (body key: 'token'). The body fallback is intended as a safe development-time
-            // convenience when the client or an intermediary strips headers. We still prefer
-            // the Authorization header when present.
+            // Try to get token from: Authorization header (preferred) or POST body (fallback)
             $token = null;
+            
+            // First: try Authorization header
             if ($request->hasHeader('Authorization')) {
                 $token = str_replace('Bearer ', '', $request->header('Authorization'));
-            } elseif ($request->input('token')) {
+                Log::info('Broadcasting auth: token from header', ['token_present' => !!$token]);
+            }
+            
+            // Fallback: try POST body 'token' field
+            if (!$token && $request->input('token')) {
                 $token = $request->input('token');
+                Log::info('Broadcasting auth: token from body', ['token_present' => !!$token]);
             }
 
-            if (! $token) {
-                // Log a concise warning without printing the full token
-                Log::warning('Broadcasting auth failed: Authorization header missing', [
+            if (!$token) {
+                Log::warning('Broadcasting auth failed: No token in header or body', [
                     'path' => $request->path(),
-                    'method' => $request->method(),
-                    'headers' => $request->headers->all(),
-                    'body' => $request->all(),
-                    'ip' => $request->ip(),
+                    'body_keys' => array_keys($request->all()),
+                    'has_auth_header' => $request->hasHeader('Authorization'),
                 ]);
-
-                return response()->json(['error' => 'Authorization header missing'], 401);
+                return response()->json(['error' => 'Authorization token missing'], 401);
             }
 
             // Mask token for logs (keep first/last 4 chars) but use full token for auth
             $masked = substr($token, 0, 4) . '...' . substr($token, -4);
             Log::info('Broadcasting auth: token received (masked)', ['token_masked' => $masked]);
 
-            // Validate token and set user resolver safely
-            $request->setUserResolver(function () use ($token) {
-                try {
-                    return JWTAuth::setToken($token)->authenticate();
-                } catch (\Throwable $t) {
-                    // rethrow to be handled by outer catch
-                    throw $t;
+            // Validate token immediately and set the resolved user to avoid
+            // exceptions being thrown later when the framework calls $request->user()
+            try {
+                $user = JWTAuth::setToken($token)->authenticate();
+                if (!$user) {
+                    Log::warning('Broadcasting auth failed: token did not resolve to a user', ['token_masked' => $masked]);
+                    return response()->json(['error' => 'Invalid broadcasting authentication token'], 403);
                 }
-            });
+
+                // Set resolver to return the authenticated user (no further JWT calls)
+                $request->setUserResolver(function () use ($user) {
+                    return $user;
+                });
+            } catch (TokenExpiredException $ex) {
+                Log::error('Broadcasting auth JWT parse failed', ['error' => $ex->getMessage(), 'class' => get_class($ex)]);
+                return response()->json(['error' => 'Token has expired'], 401);
+            } catch (JWTException $ex) {
+                Log::error('Broadcasting auth JWT parse failed', ['error' => $ex->getMessage(), 'class' => get_class($ex)]);
+                return response()->json(['error' => 'Invalid broadcasting authentication token'], 403);
+            }
 
             return $next($request);
         } catch (\Throwable $e) {
@@ -66,19 +79,17 @@ class ValidateBroadcastingAuth
             Log::error('Broadcasting auth error: ' . $e->getMessage(), [
                 'exception' => $e,
                 'path' => $request->path(),
-                'headers' => $request->headers->all(),
                 'body' => $request->all(),
                 'ip' => $request->ip(),
             ]);
 
-            // If it's an auth/token problem, return 403; otherwise return 500 so client sees server error
-            // Check common JWT exceptions classes if available
+            // If it's an auth/token problem, return 403; otherwise return 500
             $class = get_class($e);
             if (stripos($class, 'Token') !== false || stripos($class, 'JWT') !== false) {
-                return response()->json(['error' => 'Invalid broadcasting authentication'], 403);
+                return response()->json(['error' => 'Invalid broadcasting authentication token'], 403);
             }
 
-            return response()->json(['error' => 'Broadcasting authentication failed'], 500);
+            return response()->json(['error' => 'Broadcasting authentication error: ' . $e->getMessage()], 500);
         }
     }
 }

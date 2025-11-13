@@ -1,45 +1,41 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { PawPrint, Plus, Trash2, Edit2, Check } from "lucide-react";
+import { PawPrint, Plus, Trash2, Edit2, Check, Loader2 } from "lucide-react"; // ✅ Adicionado Loader2
 import { motion, AnimatePresence } from "framer-motion";
 import Tippy from "@tippyjs/react";
 import "tippy.js/dist/tippy.css"; // Tooltip styles
 
-interface Pet {
-  id: number;
-  nome: string;
-  especie: string;
-  raca: string;
-  data_nascimento?: string | null;
-  idade?: number;
-  peso?: number;
-  tutor_id: number;
-  alergias?: string | null;
-  medicamentos_continuos?: string | null;
-  cuidados_especiais?: string | null;
-}
+// ✅ 1. Importar Serviços e Tipos
+import { PetService } from "../../services/PetService"; //
+import TutorService from "../../services/TutorService"; //
+import { Pet as PetType, Usuario } from "../../services/types"; //
+import { useToast } from "../ui/ToastProvider"; // ✅ Usar Toasts ao invés de 'alert'
 
-interface User {
-  id: number;
-  tipo: "tutor" | "veterinario";
-  tutor_id?: number;
-  clinica_id?: number;
-  veterinario_id?: number;
-}
+// ✅ 2. Interface Pet atualizada para usar o tipo central
+interface Pet extends PetType {}
+
+// ✅ Interface User atualizada para corresponder ao tipo central
+interface User extends Pick<Usuario, 'id' | 'tipo' | 'tutor_id' | 'clinica_id' | 'veterinario_id'> {}
 
 interface Props {
   currentUser: User;
 }
 
 export default function PetDashboard({ currentUser }: Props) {
-  const navigate = useNavigate();
-  const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
+  // ❌ 3. Remover 'navigate' e 'API_URL' (não são mais necessários aqui)
+  const navigate = useNavigate(); // Navigate é mantido para o fallback de token
+  // const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
+  const { showToast } = useToast();
 
   const [pets, setPets] = useState<Pet[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPet, setEditingPet] = useState<Pet | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
+  
+  // ✅ 4. Adicionar estado de erro para o modal
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState("");
 
   const [formData, setFormData] = useState({
     nome: "",
@@ -55,17 +51,8 @@ export default function PetDashboard({ currentUser }: Props) {
     cuidadosSim: false,
   });
 
-  // ---------- VALIDAÇÃO DO TOKEN ----------
-  function isTokenValid(token: string | null) {
-    if (!token) return false;
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      const now = Date.now() / 1000;
-      return payload.exp > now;
-    } catch (e) {
-      return false;
-    }
-  }
+  // ❌ 5. Remover função 'isTokenValid'. O interceptor em 'api.ts' já cuida disso.
+  //
 
   // ---------- FUNÇÃO PARA CALCULAR IDADE ----------
   function calcularIdade(dataNascimento: string) {
@@ -79,36 +66,28 @@ export default function PetDashboard({ currentUser }: Props) {
     return idade;
   }
 
-  // ---------- BUSCAR PETS ----------
+  // ---------- BUSCAR PETS (Refatorado) ----------
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!isTokenValid(token)) {
-      alert("Sua sessão expirou. Faça login novamente.");
-      navigate("/login");
-      return;
-    }
-
+    // ❌ 6. Verificação de token removida. O Service/api.ts cuida disso.
+    
     async function fetchPets() {
       setLoading(true);
       try {
-        const tutorRes = await fetch(`${API_URL}/api/tutores/usuario/${currentUser.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const tutorData = await tutorRes.json();
-        const tutorId = tutorData.id;
+        // ✅ 7. Usar TutorService para buscar o tutor logado.
+        // Esta rota (TutorController@meu) já retorna os pets.
+        const tutorData = await TutorService.getMeuTutor();
 
-        const petsRes = await fetch(`${API_URL}/api/tutores/${tutorId}/pets`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const petsData = await petsRes.json();
-        const petsArray = Array.isArray(petsData) ? petsData : petsData.data || [];
+        const petsArray = tutorData.pets || [];
+        
         // Preenche a idade a partir da data_nascimento
         petsArray.forEach((p: Pet) => {
           if (p.data_nascimento) p.idade = calcularIdade(p.data_nascimento);
         });
         setPets(petsArray);
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
+        // O interceptor 'api.ts' já redireciona se for 401 (expirado)
+        // Se for outro erro (ex: 500), apenas logamos.
         setPets([]);
       } finally {
         setLoading(false);
@@ -116,7 +95,7 @@ export default function PetDashboard({ currentUser }: Props) {
     }
 
     fetchPets();
-  }, [API_URL, currentUser, navigate]);
+  }, [currentUser]); // ✅ 8. Dependências limpas
 
   // ---------- HANDLE CHANGE ----------
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
@@ -136,7 +115,7 @@ export default function PetDashboard({ currentUser }: Props) {
       setFormData({
         nome: pet.nome,
         especie: pet.especie,
-        raca: pet.raca,
+        raca: pet.raca || "", // Corrigido para raca
         idade: pet.idade?.toString() || "",
         peso: pet.peso?.toString() || "",
         alergias: pet.alergias || "",
@@ -163,65 +142,55 @@ export default function PetDashboard({ currentUser }: Props) {
       });
     }
     setModalOpen(true);
+    setModalError(""); // Limpa erros ao abrir
+    setModalLoading(false);
   }
 
-  // ---------- HANDLE SUBMIT ----------
+  // ---------- HANDLE SUBMIT (Refatorado) ----------
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const token = localStorage.getItem("token");
-    if (!isTokenValid(token)) {
-      alert("Sua sessão expirou. Faça login novamente.");
-      navigate("/login");
-      return;
-    }
+    // ❌ 9. Verificação de token removida.
 
     const nome = formData.nome.trim();
     const especie = formData.especie.trim();
     const raca = formData.raca.trim();
-    if (!nome || !especie || !raca) {
-      alert("Preencha os campos obrigatórios: Nome, Espécie e Raça");
+    if (!nome || !especie) { // ✅ Raça não é mais obrigatória
+      setModalError("Preencha os campos obrigatórios: Nome e Espécie");
       return;
     }
 
+    setModalLoading(true); // ✅ Usar loading do modal
+    setModalError("");
+
     try {
-      const tutorRes = await fetch(`${API_URL}/api/tutores/usuario/${currentUser.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const tutorData = await tutorRes.json();
-      const tutorId = tutorData.id;
+      // ❌ 10. Fetch de Tutor removido. O backend associa o usuário logado.
 
       const payload = {
         nome,
         especie,
-        raca,
+        raca: raca || null, // Envia null se vazio
+        // O backend espera data_nascimento
         data_nascimento: formData.idade ? `${new Date().getFullYear() - Number(formData.idade)}-01-01` : null,
         peso: formData.peso ? Number(formData.peso) : null,
         alergias: formData.alergiasSim ? formData.alergias : null,
         medicamentos_continuos: formData.medicamentosSim ? formData.medicamentos_continuos : null,
         cuidados_especiais: formData.cuidadosSim ? formData.cuidados_especiais : null,
-        tutor_id: tutorId,
+        // ❌ tutor_id removido. O backend associa automaticamente.
       };
 
-      let res, data;
+      let data: Pet; // ✅ Tipagem forte
       if (editingPet) {
-        res = await fetch(`${API_URL}/api/pets/${editingPet.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify(payload),
-        });
-        data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Erro ao atualizar pet");
+        // ✅ 11. Usar PetService.update
+        data = await PetService.update(editingPet.id, payload as any); //
         data.idade = formData.idade ? Number(formData.idade) : undefined;
         setPets((prev) => prev.map((p) => (p.id === editingPet.id ? data : p)));
         setSuccessMessage(`✏️ Pet "${data.nome}" atualizado com sucesso!`);
       } else {
-        res = await fetch(`${API_URL}/api/pets`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify(payload),
-        });
-        data = await res.json();
-        if (!res.ok) throw new Error(data.message || "Erro ao cadastrar pet");
+        // ✅ 12. Usar PetService.create
+        //
+        // O PetController.store retorna { pet: ... }
+        const responseData = await PetService.create(payload as any);
+        data = (responseData as any).pet || responseData; // Lida com a resposta aninhada
         data.idade = formData.idade ? Number(formData.idade) : undefined;
         setPets((prev) => [...prev, data]);
         setSuccessMessage(`🐾 Pet "${data.nome}" cadastrado com sucesso!`);
@@ -230,35 +199,36 @@ export default function PetDashboard({ currentUser }: Props) {
       setModalOpen(false);
       setEditingPet(null);
       setTimeout(() => setSuccessMessage(""), 3000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Erro ao salvar pet.");
+      // ✅ 13. Mostrar erro no modal
+      setModalError(err.response?.data?.message || err.message || "Erro ao salvar pet.");
+    } finally {
+      setModalLoading(false); // ✅ Parar loading do modal
     }
   }
 
-  // ---------- HANDLE DELETE ----------
+  // ---------- HANDLE DELETE (Refatorado) ----------
   async function handleDelete(id: number) {
-    const token = localStorage.getItem("token");
-    if (!isTokenValid(token)) {
-      alert("Sua sessão expirou. Faça login novamente.");
-      navigate("/login");
-      return;
-    }
+    // ❌ 14. Verificação de token removida.
     if (!confirm("Deseja realmente excluir este pet?")) return;
 
     try {
-      const res = await fetch(`${API_URL}/api/pets/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Erro ao excluir pet");
+      // ✅ 15. Usar PetService.delete
+      await PetService.delete(id); //
       setPets((prev) => prev.filter((p) => p.id !== id));
-    } catch {
-      alert("Erro ao excluir pet.");
+      showToast("Pet excluído com sucesso!", { type: 'success' });
+    } catch(err: any) {
+      console.error(err);
+      showToast(err.response?.data?.message || "Erro ao excluir pet.", { type: 'error' });
     }
   }
 
-  if (loading) return <p className="p-6 text-center">Carregando pets...</p>;
+  if (loading) return (
+    <div className="flex justify-center items-center p-6">
+        <Loader2 className="animate-spin w-6 h-6 mr-2" /> Carregando pets...
+    </div>
+  );
 
   return (
     <div className="min-h-screen p-6 bg-gray-50">
@@ -305,21 +275,27 @@ export default function PetDashboard({ currentUser }: Props) {
             <tbody className="bg-white divide-y divide-gray-200">
               {pets.map((pet) => (
                 <tr key={pet.id} className="hover:bg-gray-50 transition relative">
-                  <Tippy
-                    content={
-                      <div className="text-sm">
-                        {pet.alergias && <p>🩹 Alergias: {pet.alergias}</p>}
-                        {pet.medicamentos_continuos && <p>💊 Medicamentos: {pet.medicamentos_continuos}</p>}
-                        {pet.cuidados_especiais && <p>⚠️ Cuidados: {pet.cuidados_especiais}</p>}
-                      </div>
-                    }
-                  >
-                    <td className="px-6 py-4 cursor-pointer">{pet.nome}</td>
-                  </Tippy>
+                  
+                  {/* ✅ CORREÇÃO DO BUG: O Tippy deve ficar DENTRO do <td> */}
+                  <td className="px-6 py-4 cursor-pointer">
+                    <Tippy
+                      content={
+                        <div className="text-sm p-1">
+                          {pet.alergias && <p>🩹 Alergias: {pet.alergias}</p>}
+                          {pet.medicamentos_continuos && <p>💊 Medicamentos: {pet.medicamentos_continuos}</p>}
+                          {pet.cuidados_especiais && <p>⚠️ Cuidados: {pet.cuidados_especiais}</p>}
+                          {(!pet.alergias && !pet.medicamentos_continuos && !pet.cuidados_especiais) && <p>Sem observações.</p>}
+                        </div>
+                      }
+                    >
+                      {/* O Tippy precisa de um elemento DOM real (como span) para se ancorar */}
+                      <span>{pet.nome}</span> 
+                    </Tippy>
+                  </td>
                   <td className="px-6 py-4">{pet.especie}</td>
-                  <td className="px-6 py-4">{pet.raca}</td>
+                  <td className="px-6 py-4">{pet.raca || "-"}</td>
                   <td className="px-6 py-4">{pet.idade || "-"}</td>
-                  <td className="px-6 py-4">{pet.peso || "-"}</td>
+                  <td className="px-6 py-4">{pet.peso ? `${pet.peso} kg` : "-"}</td>
                   <td className="px-6 py-4 flex gap-2">
                     <button onClick={() => openModal(pet)} className="text-blue-500 hover:text-blue-700">
                       <Edit2 size={18} />
@@ -339,28 +315,37 @@ export default function PetDashboard({ currentUser }: Props) {
       <AnimatePresence>
         {modalOpen && (
           <motion.div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            onClick={() => setModalOpen(false)} // Fecha ao clicar fora
           >
             <motion.div
               className="bg-white rounded-2xl w-full max-w-lg p-8 relative shadow-2xl overflow-hidden"
               initial={{ scale: 0.8 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0.8 }}
+              onClick={(e) => e.stopPropagation()} // Impede de fechar ao clicar dentro
             >
               <h2 className="text-3xl font-extrabold mb-6 text-gray-800 flex items-center gap-2">
                 {editingPet ? "Editar Pet" : "Cadastrar Novo Pet"} <PawPrint size={28} className="text-blue-600" />
               </h2>
+              
+              {/* ✅ 16. Mostrar erro do modal */}
+              {modalError && (
+                  <div className="bg-red-100 border border-red-300 text-red-700 p-3 rounded-lg mb-4 text-sm">
+                      {modalError}
+                  </div>
+              )}
 
               <form className="space-y-5" onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     { name: "nome", label: "Nome do Pet", required: true },
                     { name: "especie", label: "Espécie", required: true },
-                    { name: "raca", label: "Raça", required: true },
-                    { name: "idade", label: "Idade", type: "number", required: false },
+                    { name: "raca", label: "Raça", required: false }, // ✅ Raça não é mais obrigatória
+                    { name: "idade", label: "Idade (anos)", type: "number", required: false },
                     { name: "peso", label: "Peso (kg)", type: "number", required: false },
                   ].map(({ name, label, type, required }) => (
                     <div className="relative" key={name}>
@@ -401,10 +386,23 @@ export default function PetDashboard({ currentUser }: Props) {
                 ))}
 
                 <div className="flex gap-3 mt-4">
-                  <button type="submit" className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform hover:-translate-y-0.5">
-                    {editingPet ? "Atualizar Pet" : "Salvar Pet"}
+                  <button 
+                    type="submit" 
+                    className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl shadow-lg transition transform hover:-translate-y-0.5 disabled:opacity-70"
+                    disabled={modalLoading} // ✅ 17. Desabilitar botão
+                  >
+                    {modalLoading ? (
+                        <Loader2 className="animate-spin w-5 h-5 mx-auto" />
+                    ) : (
+                        editingPet ? "Atualizar Pet" : "Salvar Pet"
+                    )}
                   </button>
-                  <button type="button" onClick={() => setModalOpen(false)} className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 rounded-xl shadow transition transform hover:-translate-y-0.5">
+                  <button 
+                    type="button" 
+                    onClick={() => setModalOpen(false)} 
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 rounded-xl shadow transition transform hover:-translate-y-0.5"
+                    disabled={modalLoading}
+                  >
                     Cancelar
                   </button>
                 </div>

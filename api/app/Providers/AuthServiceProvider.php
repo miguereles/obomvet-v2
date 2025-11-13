@@ -21,6 +21,7 @@ use App\Policies\TutorPolicy;
 use App\Policies\VeterinarioPolicy;
 use App\Policies\UsuarioPolicy;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
+use Illuminate\Support\Facades\Gate; // ✅ [CORREÇÃO 1] Importa o Gate
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -37,7 +38,7 @@ class AuthServiceProvider extends ServiceProvider
         Pet::class => PetPolicy::class,
         Prontuario::class => ProntuarioPolicy::class,
         Tutor::class => TutorPolicy::class,
-    Usuario::class => UsuarioPolicy::class,
+        Usuario::class => UsuarioPolicy::class,
         Veterinario::class => VeterinarioPolicy::class,
     ];
 
@@ -47,5 +48,17 @@ class AuthServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerPolicies();
+
+        // ✅ [CORREÇÃO 2] Adiciona a regra de "Super Admin"
+        // Isto é executado ANTES de qualquer outra Policy.
+        // Se o utilizador for 'admin', ele tem permissão total.
+        Gate::before(function (Usuario $user, $ability) {
+            if ($user->tipo === 'admin') {
+                return true;
+            }
+
+            // Retorna null para deixar as outras Policies decidirem
+            return null; 
+        });
     }
 }

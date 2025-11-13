@@ -1,5 +1,6 @@
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
+// ✅ CORRIGIDO: O nome da função é 'getToken', não 'getTokenFallback'
 import { getToken } from '../utils/auth'; // Importa seu helper de token [cite: src/utils/auth.ts]
 
 // Torna o Pusher globalmente disponível para o Echo
@@ -17,90 +18,66 @@ const options = {
   cluster: VITE_PUSHER_APP_CLUSTER,
   forceTLS: true,
   authEndpoint: `${VITE_API_URL}/api/broadcasting/auth`,
-  auth: {
-    headers: {
-      Accept: 'application/json',
-    },
-    // Força o uso de um authorizer que adiciona o token atual no momento da requisição
-    authorizer: (channel: any, options: any) => {
-      return {
-        authorize: (socketId: string, callback: (err: any, auth?: any) => void) => {
-          const token = (typeof broadcastToken !== 'undefined' && broadcastToken) ? broadcastToken : getToken();
-          const body = JSON.stringify({ socket_id: socketId, channel_name: channel.name });
+  // Remove the nested 'auth' object and use a custom authorizer directly
+  // This ensures our custom authorizer is used instead of Pusher's default
+  authorizer: (channel: any, options: any) => {
+    return {
+      authorize: (socketId: string, callback: (err: any, auth?: any) => void) => {
+        const token = (typeof broadcastToken !== 'undefined' && broadcastToken) ? broadcastToken : getToken();
+        // Include token in the body as a safe fallback in case an intermediary
+        // strips the Authorization header. The backend middleware already
+        // accepts 'token' from the request body as a development-time fallback.
+        const body = JSON.stringify({ socket_id: socketId, channel_name: channel.name, token });
 
-          // Debug logging to help trace silent failures
-          // Use console.log (more likely to be visible) instead of console.debug
-          console.log('[Echo] authorizing', {
-            socketId,
-            channel: channel.name,
-            authEndpoint: options.authEndpoint,
-            tokenPresent: !!token,
-          });
+        // Debug logging to help trace silent failures
+        console.log('[Echo] authorizing', {
+          socketId,
+          channel: channel.name,
+          authEndpoint: options.authEndpoint,
+          tokenPresent: !!token,
+        });
 
-          const headers = {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          };
+        const headers = {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        };
 
-          // Log the exact headers object that will be sent to the auth endpoint
-          console.log('[Echo] authorizer headers', headers);
+        // Log the exact headers object that will be sent to the auth endpoint
+        console.log('[Echo] authorizer headers', headers);
 
-          // If there's no token, fail fast with a clear message to help debugging
-          if (!token) {
-            console.warn('[Echo] No token available for broadcasting auth');
-            return callback(new Error('No token available for broadcasting auth'));
-          }
+        // If there's no token, fail fast with a clear message to help debugging
+        if (!token) {
+          console.warn('[Echo] No token available for broadcasting auth');
+          return callback(new Error('No token available for broadcasting auth'));
+        }
 
-          fetch(options.authEndpoint, {
-            method: 'POST',
-            headers,
-            body,
-            // Do not include credentials/cookies for broadcasting auth; we use
-            // Authorization: Bearer <token> header instead. Sending credentials
-            // may trigger CORS credentials rules unnecessarily.
-          })
-            .then(async (res) => {
-              const text = await res.text();
-              console.log('[Echo] authorizer response', { status: res.status, body: text });
+        fetch(options.authEndpoint, {
+          method: 'POST',
+          headers,
+          body,
+        })
+          .then(async (res) => {
+            const text = await res.text();
+            console.log('[Echo] authorizer response', { status: res.status, body: text });
 
-              if (!res.ok) {
-                return callback(new Error(`Auth error ${res.status}: ${text}`));
-              }
-
-              try {
-                const data = JSON.parse(text);
-                return callback(null, data);
-              } catch (e) {
-                return callback(new Error('Invalid JSON in auth response'));
-              }
-            })
-            .catch((err) => {
-              console.error('[Echo] authorizer fetch failed', err);
-              callback(err);
-            });
-          // Also send the same debug payload to a temporary debug endpoint so
-          // the server can return the headers it actually received. This is
-          // helpful when a reverse proxy or some middleware strips Authorization
-          // headers.
-          (async () => {
-            try {
-              const debugRes = await fetch(`${VITE_API_URL}/api/debug/echo-headers`, {
-                method: 'POST',
-                headers,
-                body,
-                // No credentials; we are intentionally mirroring the same
-                // outgoing request as the authorizer.
-              });
-              const debugText = await debugRes.text();
-              console.log('[Echo] debug echo-headers response', { status: debugRes.status, body: debugText });
-            } catch (e) {
-              console.warn('[Echo] debug echo-headers request failed', e);
+            if (!res.ok) {
+              return callback(new Error(`Auth error ${res.status}: ${text}`));
             }
-          })();
-        },
-      };
-    },
+
+            try {
+              const data = JSON.parse(text);
+              return callback(null, data);
+            } catch (e) {
+              return callback(new Error('Invalid JSON in auth response'));
+            }
+          })
+          .catch((err) => {
+            console.error('[Echo] authorizer fetch failed', err);
+            callback(err);
+          });
+      },
+    };
   },
 };
 

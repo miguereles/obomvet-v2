@@ -20,6 +20,9 @@ use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
+// Register Laravel Echo broadcasting auth endpoint with our custom middleware
+Broadcast::routes(['middleware' => ['api', \App\Http\Middleware\ValidateBroadcastingAuth::class]]);
+
 Route::get('/teste-cache', function () {
     return response()->json(['status' => 'cache limpo!']);
 });
@@ -32,13 +35,27 @@ Route::prefix('auth')->group(function () {
     Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:api');
 });
 
+// --- ROTAS PÚBLICAS PARA ANÓNIMOS ---
 Route::post('/pets', [PetController::class, 'store'])->middleware('throttle:10,1');
 Route::get('/pets/{pet}', [PetController::class, 'show']);
 Route::patch('/pets/{pet}/edit-with-token', [PetController::class, 'updateWithToken']);
 Route::delete('/pets/{pet}/delete-with-token', [PetController::class, 'destroyWithToken']);
-Route::post('/emergencias', [EmergenciaController::class, 'store'])->middleware('throttle:10,1');
 Route::patch('/tutores/{tutor}/edit-with-token', [TutorController::class, 'updateWithToken']);
 Route::delete('/tutores/{tutor}/delete-with-token', [TutorController::class, 'destroyWithToken']);
+
+// Rota pública para criar emergência (logado ou anónimo)
+Route::post('/emergencias', [EmergenciaController::class, 'store'])->middleware('throttle:10,1');
+
+// [ROTA PÚBLICA ADICIONADA]
+// Esta é a rota que estava a faltar.
+// Permite ao tutor anónimo VER a emergência usando o UUID.
+Route::get('emergencias/publico/{uuid}', [EmergenciaController::class, 'showPublico']);
+
+// Rota pública para salvar a subscrição de Push (logado ou anónimo)
+// Esta rota está correta e aponta para o PushController
+Route::post('/save-subscription', [PushController::class, 'store']);
+// --- FIM DAS ROTAS PÚBLICAS ---
+
 
 Route::middleware('throttle:5,1')->group(function () {
     Route::post('ia/transcribe', [IAController::class, 'transcribeUnified']);
@@ -53,7 +70,10 @@ Route::get('emergencias/por-clinica', [EmergenciaController::class, 'porClinica'
 Route::get('emergencias/meus', [EmergenciaController::class, 'meus'])
     ->middleware('auth:api');
 
-Route::apiResource('emergencias', EmergenciaController::class);
+// Regista as rotas de emergência (index, show, update, destroy)
+// Excluímos 'store' porque já a definimos como pública acima
+Route::apiResource('emergencias', EmergenciaController::class)->except(['store']);
+
 
 Route::get('/clinicas-publicas', [ClinicaController::class, 'indexPublic']);
 
@@ -68,6 +88,11 @@ Route::get('clinicas/{clinica}', [ClinicaController::class, 'show']);
 Route::apiResource('pets', PetController::class)->only(['store', 'show']);
 
 Route::middleware('auth:api')->group(function () {
+
+    Route::get('emergencias/{emergencia}/historicos', [EmergenciaController::class, 'getHistoricos']);
+    // ✅ ROTA ADICIONADA: Esta linha corrige o erro 500
+    // Associa a URL do frontend ao método 'storeHistorico' no EmergenciaController
+    Route::post('emergencias/{emergencia}/historicos', [EmergenciaController::class, 'storeHistorico']);
 
     Route::post('/usuarios/veterinarios', [UsuarioController::class, 'storeVeterinario']);
 
@@ -121,7 +146,10 @@ Route::middleware('auth:api')->group(function () {
     Route::get('historicos/{historico}/anexo', [HistoricoAtendimentoController::class, 'getAnexo']);
     Route::post('historicos/{historico}/anexo', [HistoricoAtendimentoController::class, 'storeAnexo']);
     
-    Route::apiResource('pets', PetController::class);
+    // [CORREÇÃO] A sua rota 'apiResource' para 'pets' estava duplicada.
+    // Mantive a pública 'store'/'show' e movi a protegida para dentro do 'auth:api'.
+    Route::apiResource('pets', PetController::class)->except(['store', 'show']);
+
     Route::get('pets/{pet}/tutores', [PetController::class, 'getTutors']);
     Route::get('pets/{pet}/emergencias', [PetController::class, 'getEmergencias']);
     Route::post('pets/{pet}/emergencias', [PetController::class, 'storeEmergencia']);
@@ -129,6 +157,7 @@ Route::middleware('auth:api')->group(function () {
     Route::post('pets/{pet}/prontuarios', [PetController::class, 'storeProntuario']);
     Route::get('pets/{pet}/foto', [PetController::class, 'getFoto']);
 
+    // Esta rota é para utilizadores logados (original)
     Route::post('/push/subscribe', function (Request $request) {
         $request->user()->updatePushSubscription(
             $request->input('endpoint'),
@@ -152,7 +181,7 @@ Route::post('/email/resend', function (Request $request) {
     return response()->json(['message' => 'Link de verificação reenviado!']);
 })->middleware(['auth:sanctum'])->name('verification.send');
 
-Route::post('/save-subscription', [PushController::class, 'store']);
+
 Route::post('/send-push', [PushController::class, 'send']);
 
 // Temporary debug route: echoes back request headers and body so the frontend

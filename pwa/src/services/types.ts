@@ -162,10 +162,12 @@ export interface CreateVetResponse {
 
 /**
  * Resposta do EmergenciaController::store
+ * [CORRIGIDO]
  */
 export interface CreateEmergenciaResponse {
   emergencia: Emergencia;
   clinica: Clinica;
+  public_uuid?: string; // [LINHA ADICIONADA] - Estava em falta
   edit_tokens?: {
     tutor?: string;
     pet?: string;

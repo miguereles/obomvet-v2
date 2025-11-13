@@ -4,6 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\HasOne; // ✅ [CORREÇÃO 1] Importação adicionada
+
 class Emergencia extends Model
 {
     use HasFactory;
@@ -11,50 +16,62 @@ class Emergencia extends Model
     protected $fillable = [
         'pet_id',
         'tutor_id',
+        'clinica_id',
         'veterinario_id',
-        'clinica_id', // opcional
-        'descricao_sintomas',
-        'visita_tipo',
-        'nivel_urgencia',
+        'prontuario_id',
         'status',
-        'data_abertura',
-        'data_conclusao',
-        'diagnostico',
-        'prescricao_medica',
-        'custo_estimado',
-        'localizacao'
+        'descricao_sintomas',
+        'relatorio_detalhado_ia',
+        'materiais_provaveis',
+        'nivel_urgencia',
+        'localizacao',
+        'visita_tipo',
+        'public_uuid',
     ];
 
     protected $casts = [
-        'data_abertura' => 'datetime',
-        'data_conclusao' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+        'localizacao' => 'string',
     ];
 
-    public function pet()
+    public function pet(): BelongsTo
     {
         return $this->belongsTo(Pet::class);
     }
 
-    public function tutor()
+    public function tutor(): BelongsTo
     {
         return $this->belongsTo(Tutor::class);
     }
 
-    public function veterinario()
-    {
-        return $this->belongsTo(Veterinario::class);
-    }
-    public function anexos()
-    {
-        return $this->morphOne(Anexo::class, 'anexable');
-    }
-    public function clinica()
+    public function clinica(): BelongsTo
     {
         return $this->belongsTo(Clinica::class);
     }
 
-    public function historicoAtendimentos()
+    public function veterinario(): BelongsTo
     {
-        return $this->hasMany(HistoricoAtendimento::class);
+        return $this->belongsTo(Veterinario::class, 'veterinario_id');
+    }
+
+    // ✅ [CORREÇÃO 2] Relação 'prontuario' adicionada
+    /**
+     * Obtém o prontuário associado a esta emergência.
+     */
+    public function prontuario(): HasOne
+    {
+        // Assumindo que a tabela 'prontuarios' tem uma coluna 'emergencia_id'
+        return $this->hasOne(Prontuario::class);
+    }
+
+    public function historicoAtendimentos(): HasMany
+    {
+        return $this->hasMany(HistoricoAtendimento::class, 'emergencia_id');
+    }
+
+    public function anexos(): MorphMany
+    {
+        return $this->morphMany(Anexo::class, 'anexable');
     }
 }

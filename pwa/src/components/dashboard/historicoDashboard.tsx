@@ -1,32 +1,28 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { PawPrint, Clock, AlertTriangle, User2, ClipboardList } from "lucide-react";
+import { PawPrint, Clock, AlertTriangle, User2, ClipboardList, Loader2 } from "lucide-react";
+// ✅ 1. Importar o serviço de Histórico
+import HistoricoService from "../../services/HistoricoService";
+// ✅ 2. Importar o tipo de Histórico (assumindo que está em types.ts)
+import { HistoricoAtendimento } from "../../services/types"; // Usar o tipo central
+// ✅ 3. Importar o getToken para verificar a sessão
+import { getToken } from "../../utils/auth";
 
-interface Historico {
-  id: number;
-  acao_realizada: string;
-  data_acao: string;
-  emergencia?: {
-    id: number;
-    pet?: {
-      nome: string;
-    };
-  };
-  veterinario?: {
-    nome: string;
-  };
-}
+// ✅ 4. Renomear a interface para corresponder ao tipo importado
+interface Historico extends HistoricoAtendimento {}
 
 export default function HistoricoDashboardPage() {
   const navigate = useNavigate();
-  const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
+  // ❌ 5. API_URL removido, pois o service já sabe o endereço
+  // const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
 
   const [historicos, setHistoricos] = useState<Historico[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    // ✅ 6. Usar getToken() para uma verificação mais robusta
+    const token = getToken();
     if (!token) {
       navigate("/login");
       return;
@@ -36,24 +32,28 @@ export default function HistoricoDashboardPage() {
       setLoading(true);
       setError("");
       try {
-        const res = await fetch(`${API_URL}/api/meus-historicos`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error("Erro ao buscar históricos");
-        const data = await res.json();
-        setHistoricos(Array.isArray(data) ? data : data.data || []);
+        // ✅ 7. Substituir o fetch manual pelo Service
+        // O service já lida com o token e a URL da API
+        const data = await HistoricoService.getMeusHistoricos();
+        
+        setHistoricos(Array.isArray(data) ? data : (data as any).data || []);
       } catch (err: any) {
         console.error(err);
-        setError(err.message || "Erro inesperado");
+        // O interceptor do Axios (api.ts) já deve tratar 401 (token expirado)
+        setError(err.response?.data?.message || err.message || "Erro inesperado");
       } finally {
         setLoading(false);
       }
     }
 
     fetchHistoricos();
-  }, [API_URL, navigate]);
+  }, [navigate]); // ✅ 8. Remover dependências desnecessárias
 
-  if (loading) return <p className="p-6 text-center">Carregando histórico...</p>;
+  if (loading) return (
+    <div className="flex items-center justify-center p-6 text-center">
+        <Loader2 className="animate-spin w-6 h-6 mr-2" /> Carregando histórico...
+    </div>
+  );
 
   return (
     <div className="min-h-screen p-6 bg-gray-50">
@@ -91,12 +91,14 @@ export default function HistoricoDashboardPage() {
                 <tr key={h.id} className="hover:bg-gray-50 transition">
                   <td className="px-6 py-4 flex items-center gap-2">
                     <PawPrint size={16} className="text-gray-500" />
+                    {/* ✅ 9. O backend já envia o pet dentro da emergencia */}
                     {h.emergencia?.pet?.nome ?? "—"}
                   </td>
                   <td className="px-6 py-4">{h.acao_realizada}</td>
                   <td className="px-6 py-4 flex items-center gap-2">
                     <User2 size={16} className="text-gray-500" />
-                    {h.veterinario?.nome ?? "—"}
+                    {/* ✅ 10. O backend já envia o nome do veterinário */}
+                    {h.veterinario?.nome_completo ?? "—"}
                   </td>
                   <td className="px-6 py-4 flex items-center gap-2">
                     <Clock size={16} className="text-gray-500" />

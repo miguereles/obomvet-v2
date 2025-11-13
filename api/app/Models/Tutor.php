@@ -4,32 +4,50 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+// ✅ [CORREÇÃO 1] Importa o Trait de Push Subscriptions
+use NotificationChannels\WebPush\HasPushSubscriptions;
 
 class Tutor extends Model
 {
-    use HasFactory;
+    // ✅ [CORREÇÃO 2] Adiciona os Traits Notifiable e HasPushSubscriptions
+    use HasFactory, Notifiable, HasPushSubscriptions;
 
     protected $fillable = [
         'usuario_id',
         'nome_completo',
         'telefone_principal',
-        'telefone_alternativo',
-        'cpf',
         'email_contato',
+        'endereco_id',
+        'cpf',
+        'foto_perfil_path',
+        'preferencias_contato',
+        'informacoes_adicionais',
+        // Tokens para edição anónima
+        'anonymous_edit_token',
+        'anonymous_edit_token_expires_at',
     ];
 
-    public function user()
+    protected $casts = [
+        'preferencias_contato' => 'array',
+        'anonymous_edit_token_expires_at' => 'datetime',
+    ];
+
+    public function usuario(): BelongsTo
     {
-        return $this->belongsTo(Usuario::class);
+        return $this->belongsTo(Usuario::class, 'usuario_id');
     }
 
-    public function pets()
+    public function pets(): HasMany
     {
-        return $this->hasMany(Pet::class);
+        return $this->hasMany(Pet::class, 'tutor_id');
     }
 
-    public function emergencias()
+    public function emergencias(): HasMany
     {
-        return $this->hasMany(Emergencia::class);
+        return $this->hasMany(Emergencia::class, 'tutor_id');
     }
 }

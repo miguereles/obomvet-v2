@@ -6,17 +6,26 @@ use App\Models\Emergencia;
 use App\Models\Clinica;
 use App\Models\Pet;
 use App\Events\NovaEmergencia;
+use App\Events\EmergenciaAtualizada;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Tutor;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Illuminate\Database\QueryException; // <-- ✅ ADICIONAR IMPORTAÇÃO
+use Throwable; // <-- ✅ ADICIONAR IMPORTAÇÃO
 
 class EmergenciaController extends Controller
 {
     public function __construct()
     {
         // $this->authorizeResource(Emergencia::class, 'emergencia');
+        
+        // [ATUALIZAÇÃO]
+        // Protege todas as rotas, EXCETO 'store' (criação anónima)
+        // e 'showPublico' (visualização anónima)
+        $this->middleware('auth:api')->except(['store', 'showPublico']);
     }
 
     /**
@@ -46,20 +55,33 @@ class EmergenciaController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
+        $tutorToken = null; 
+        $petToken = null; 
+
 
         // validações: se usuário tutor autenticado, exige pet_id; se anônimo exigir contato (nome/telefone) ou pet existente
         if (!$user || !$user->tutor) {
             $validated = $request->validate([
                 'descricao_sintomas' => 'required|string',
                 'nivel_urgencia' => 'required|in:baixa,media,alta,critica',
+                
+                // ✅ === INÍCIO DA CORREÇÃO ===
+                // Adicionadas regras para campos da IA, tipo de visita e clínica manual
+                'relatorio_detalhado_ia' => 'nullable|string',
+                'materiais_provaveis' => 'nullable|string',
+                'visita_tipo' => 'required|in:clinica,domicilio',
+                'clinica_id' => 'nullable|exists:clinicas,id',
+                // ✅ === FIM DA CORREÇÃO ===
+
                 'pet_id' => 'nullable|exists:pets,id',
                 'tutor_nome' => 'required_without:pet_id|string|max:100',
                 'tutor_telefone' => 'required_without:pet_id|string|max:20',
-                'tutor_email' => 'nullable|email|max:255', // ✅ CAMPO DE VALIDAÇÃO ADICIONADO
+                'tutor_email' => 'nullable|email|max:255',
                 'location' => 'nullable|array',
                 'location.latitude' => 'required_with:location|numeric',
                 'location.longitude' => 'required_with:location|numeric',
-                'recaptcha_token' => 'nullable|string'
+                'recaptcha_token' => 'nullable|string',
+                'pet_nome' => 'nullable|string|max:100', // (Vem do useEmergencyReport)
             ]);
 
             // opcional: verificar reCAPTCHA
@@ -79,12 +101,13 @@ class EmergenciaController extends Controller
             }
 
             // criar Tutor temporário se necessário
+            $tutor = null;
             if (empty($validated['pet_id'])) {
                 $tutor = Tutor::create([
                     'usuario_id' => null,
                     'nome_completo' => $validated['tutor_nome'],
                     'telefone_principal' => $validated['tutor_telefone'],
-                    'email_contato' => $validated['tutor_email'] ?? null, // ✅ CAMPO ADICIONADO AQUI
+                    'email_contato' => $validated['tutor_email'] ?? null,
                 ]);
 
                 // gerar token de edição para tutor anônimo
@@ -103,6 +126,15 @@ class EmergenciaController extends Controller
             $validated = $request->validate([
                 'descricao_sintomas' => 'required|string',
                 'nivel_urgencia' => 'required|in:baixa,media,alta,critica',
+
+                // ✅ === INÍCIO DA CORREÇÃO ===
+                // Adicionadas regras para campos da IA, tipo de visita e clínica manual
+                'relatorio_detalhado_ia' => 'nullable|string',
+                'materiais_provaveis' => 'nullable|string',
+                'visita_tipo' => 'required|in:clinica,domicilio',
+                'clinica_id' => 'nullable|exists:clinicas,id',
+                // ✅ === FIM DA CORREÇÃO ===
+
                 'pet_id' => 'required|exists:pets,id',
                 'tutor_id' => 'nullable|exists:tutors,id',
                 'location' => 'nullable|array',
@@ -122,7 +154,7 @@ class EmergenciaController extends Controller
             try {
                 $pet = Pet::create([
                     'nome' => $validated['pet_nome'],
-                    'especie' => $validated['pet_especie'] ?? 'N/A',
+                    'especie' => $request->input('pet_especie', 'N/A'), // Pega do request, se houver
                     'tutor_id' => $validated['tutor_id'] ?? null,
                 ]);
                 $validated['pet_id'] = $pet->id;
@@ -140,48 +172,61 @@ class EmergenciaController extends Controller
             }
         }
 
-        // Busca todas as clínicas
-        $todasClinicas = Clinica::all();
-        if ($todasClinicas->isEmpty()) {
-            //eventualmente precisa retirar isso daqui
-            return response()->json(['error' => 'Nenhuma clínica cadastrada no sistema'], 400);
+        // ✅ === INÍCIO DA CORREÇÃO LÓGICA ===
+        // Verifica se uma clínica já foi definida (pela escolha manual do utilizador)
+        if (!empty($validated['clinica_id'])) {
+            $clinicaAlvo = Clinica::find($validated['clinica_id']);
         }
-
-        // Calcula a clínica mais próxima se o usuário enviou localização
-        if ($userLocation && isset($userLocation['latitude']) && isset($userLocation['longitude'])) {
-            $userLat = (float) $userLocation['latitude'];
-            $userLon = (float) $userLocation['longitude'];
-
-            $distanciaMinima = PHP_INT_MAX;
-            $clinicaMaisProxima = null;
-
-            foreach ($todasClinicas as $clinica) {
-                // Localização no formato "L:lat,G:lon"
-                $coords = explode(',', $clinica->localizacao);
-                if (count($coords) !== 2) continue;
-
-                $clinicLat = (float) str_replace('L:', '', $coords[0]);
-                $clinicLon = (float) str_replace('G:', '', $coords[1]);
-
-                $distancia = $this->haversineDistance($userLat, $userLon, $clinicLat, $clinicLon);
-
-                if ($distancia < $distanciaMinima) {
-                    $distanciaMinima = $distancia;
-                    $clinicaMaisProxima = $clinica;
-                }
+        // ✅ === FIM DA CORREÇÃO LÓGICA ===
+        
+        // Se a $clinicaAlvo ainda for nula (sem escolha manual), 
+        // procura a mais próxima ou a primeira
+        if (!$clinicaAlvo) {
+            // Busca todas as clínicas
+            $todasClinicas = Clinica::all();
+            if ($todasClinicas->isEmpty()) {
+                //eventualmente precisa retirar isso daqui
+                return response()->json(['error' => 'Nenhuma clínica cadastrada no sistema'], 400);
             }
 
-            $clinicaAlvo = $clinicaMaisProxima;
-        } else {
-            // Fallback: pega a primeira clínica se sem localização
-            $clinicaAlvo = $todasClinicas->first();
+            // Calcula a clínica mais próxima se o usuário enviou localização
+            if ($userLocation && isset($userLocation['latitude']) && isset($userLocation['longitude'])) {
+                $userLat = (float) $userLocation['latitude'];
+                $userLon = (float) $userLocation['longitude'];
+
+                $distanciaMinima = PHP_INT_MAX;
+                $clinicaMaisProxima = null;
+
+                foreach ($todasClinicas as $clinica) {
+                    // Localização no formato "L:lat,G:lon" ou "lat,lon"
+                    $coordsStr = str_replace(['L:', 'G:'], '', $clinica->localizacao);
+                    $coords = explode(',', $coordsStr);
+                    if (count($coords) !== 2) continue;
+
+                    $clinicLat = (float) $coords[0];
+                    $clinicLon = (float) $coords[1];
+
+                    $distancia = $this->haversineDistance($userLat, $userLon, $clinicLat, $clinicLon);
+
+                    if ($distancia < $distanciaMinima) {
+                        $distanciaMinima = $distancia;
+                        $clinicaMaisProxima = $clinica;
+                    }
+                }
+
+                $clinicaAlvo = $clinicaMaisProxima;
+            } else {
+                // Fallback: pega a primeira clínica se sem localização
+                $clinicaAlvo = $todasClinicas->first();
+            }
+
+            if (!$clinicaAlvo) {
+                return response()->json(['error' => 'Não foi possível atribuir uma clínica'], 500);
+            }
+
+            $validated['clinica_id'] = $clinicaAlvo->id;
         }
 
-        if (!$clinicaAlvo) {
-            return response()->json(['error' => 'Não foi possível atribuir uma clínica'], 500);
-        }
-
-        $validated['clinica_id'] = $clinicaAlvo->id;
 
         // Persistir localização da emergência no formato 'lat,lng' para futuras reatribuições
         if ($userLocation && isset($userLocation['latitude']) && isset($userLocation['longitude'])) {
@@ -192,7 +237,11 @@ class EmergenciaController extends Controller
         unset($validated['location']);
 
         // Remover dados temporários e tokens
-        unset($validated['recaptcha_token'], $validated['tutor_nome'], $validated['tutor_telefone'], $validated['tutor_email']); // ✅ CAMPO ADICIONADO AO UNSET
+        unset($validated['recaptcha_token'], $validated['tutor_nome'], $validated['tutor_telefone'], $validated['tutor_email'], $validated['pet_nome']);
+        
+        // [LINHA ADICIONADA] Gera o UUID público para o acompanhamento anónimo
+        $validated['public_uuid'] = (string) Str::uuid();
+
 
         // Log para auditoria mínima do request anônimo
         Log::info('Criando emergência', [
@@ -201,26 +250,62 @@ class EmergenciaController extends Controller
             'tutor_id' => $validated['tutor_id'] ?? null,
         ]);
 
-        $emergencia = Emergencia::create($validated);
+        // ✅ === INÍCIO DA CAPTURA DE ERRO ===
+        try {
+            $emergencia = Emergencia::create($validated);
+        } catch (QueryException $e) {
+            // Captura especificamente erros de SQL
+            Log::error('Falha ao criar emergência (QueryException): ' . $e->getMessage(), [
+                'sql' => $e->getSql(),
+                'bindings' => $e->getBindings(),
+                'validated_data' => $validated // Loga os dados exatos que falharam
+            ]);
+            return response()->json(['error' => 'Erro ao salvar no banco de dados. O administrador foi notificado.', 'message' => $e->getMessage()], 500);
+        } catch (Throwable $e) {
+            // Captura qualquer outro erro (ex: MassAssignmentException, se o cache estiver antigo)
+            Log::error('Falha ao criar emergência (Throwable): ' . $e->getMessage(), [
+                'exception_type' => get_class($e),
+                'validated_data' => $validated // Loga os dados exatos que falharam
+            ]);
+            return response()->json(['error' => 'Erro interno do servidor. O administrador foi notificado.', 'message' => $e->getMessage()], 500);
+        }
+        // ✅ === FIM DA CAPTURA DE ERRO ===
+        
+        // Load related data before broadcasting so the event has complete data
+        $emergencia->load(['tutor', 'clinica', 'pet']);
         
         NovaEmergencia::dispatch($emergencia);
-                // if (!$clinicaAlvo) {
+        
+        // [RESPOSTA CORRIGIDA]
+        $response = [
+            'emergencia' => $emergencia, 
+            'clinica' => $clinicaAlvo,
+            'public_uuid' => $emergencia->public_uuid // Devolve o UUID para o frontend
+        ];
 
-        //     return response()->json([
-        //         'emergencia' => $emergencia,
-        //     ], 201);
-        // }else{
-        //     $validated['clinica_id'] = $clinicaAlvo->id;
-        //     return response()->json([
-        //         'emergencia' => $emergencia,
-        //         'clinica' => $clinicaAlvo
-        //     ], 201);
-        // }
-        $response = ['emergencia' => $emergencia, 'clinica' => $clinicaAlvo];
+        // Devolve os tokens para o frontend (para o PushService e para edição futura)
         if (isset($tutorToken)) $response['edit_tokens']['tutor'] = $tutorToken;
         if (isset($petToken)) $response['edit_tokens']['pet'] = $petToken;
 
         return response()->json($response, 201);
+    }
+
+    /**
+     * [MÉTODO ADICIONADO]
+     * Busca uma emergência pelo seu UUID público.
+     * Esta rota é pública e usada por tutores anónimos.
+     */
+    public function showPublico($uuid)
+    {
+        $emergencia = Emergencia::where('public_uuid', $uuid)
+            ->with(['clinica', 'pet', 'tutor']) // Carrega as relações necessárias
+            ->firstOrFail(); // Falha com 404 se não encontrar
+            
+        // Retorna os dados da emergência e da clínica associada
+        return response()->json([
+            'emergencia' => $emergencia,
+            'clinica' => $emergencia->clinica,
+        ]);
     }
 
     /**
@@ -240,6 +325,9 @@ class EmergenciaController extends Controller
 
         $emergencia->status = 'cancelled';
         $emergencia->save();
+
+        // ✅ DISPARA O EVENTO DE ATUALIZAÇÃO PARA O TUTOR
+        event(new EmergenciaAtualizada($emergencia));
 
         // Tentar reatribuir automaticamente
         $this->redirectToClinic($request, $emergencia);
@@ -280,11 +368,12 @@ class EmergenciaController extends Controller
                     $clinicLat = (float) $clinica->lat;
                     $clinicLon = (float) $clinica->lng;
                 } else {
-                    $ccoords = explode(',', $clinica->localizacao);
+                    $coordsStr = str_replace(['L:', 'G:'], '', $clinica->localizacao);
+                    $ccoords = explode(',', $coordsStr);
                     if (count($ccoords) !== 2) continue;
                     // Suporta formatos "L:lat,G:lon" ou "lat,lon"
-                    $rawLat = trim(str_replace(['L:', 'G:'], '', $ccoords[0]));
-                    $rawLon = trim(str_replace(['L:', 'G:'], '', $ccoords[1]));
+                    $rawLat = trim($ccoords[0]);
+                    $rawLon = trim($ccoords[1]);
                     $clinicLat = (float) $rawLat;
                     $clinicLon = (float) $rawLon;
                 }
@@ -302,24 +391,41 @@ class EmergenciaController extends Controller
 
         if (!$target) return response()->json(['error'=>'Não foi possível encontrar clínica alvo'], 400);
 
+        // Salva a mudança de clínica e status
         $emergencia->clinica_id = $target->id;
-        $emergencia->status = 'assigned';
+        $emergencia->status = 'assigned'; // 'assigned' ou 'aberta'
         $emergencia->save();
 
-        // Notificar: disparar evento para clínicas e possivelmente notificar tutor
+        // Load related data before broadcasting
+        $emergencia->load(['tutor', 'clinica', 'pet']);
+
+        // Notificar a NOVA clínica
         NovaEmergencia::dispatch($emergencia);
+
+        // Notificar o TUTOR da mudança
+        event(new EmergenciaAtualizada($emergencia));
 
         return response()->json(['message'=>'Emergência reatribuída', 'emergencia' => $emergencia, 'clinica' => $target]);
     }
 
     public function show(Emergencia $emergencia)
     {
+        // [ATUALIZAÇÃO] Este método agora é protegido por 'auth:api'
+        // A sua rota 'routes/api.php' o coloca dentro de 'apiResource', que é protegida
+        $emergencia->load(['pet', 'tutor', 'clinica', 'veterinario', 'prontuario', 'anexos']);
         return $emergencia;
     }
 
     public function update(Request $request, Emergencia $emergencia)
     {
         $emergencia->update($request->all());
+
+        // ✅ CORREÇÃO ADICIONADA:
+        // Dispara o evento para notificar o tutor (via Pusher e Web Push)
+        // que o status da emergência mudou (ex: 'aceita', 'concluída', etc.)
+        $emergencia->load(['tutor', 'clinica', 'pet']); // Recarrega para ter dados no evento
+        event(new EmergenciaAtualizada($emergencia));
+
         return $emergencia;
     }
 
@@ -376,7 +482,7 @@ class EmergenciaController extends Controller
 
     // ======================================================
     // FUNÇÃO CORRIGIDA (V3 - Consulta Manual + Lazy Loading)
-    // ======================================================
+    // =G====================================================
     public function porClinica(Request $request)
     {
         try {
@@ -387,7 +493,7 @@ class EmergenciaController extends Controller
             }
 
             // 1. Consulta manual pela clínica
-            // (Isto usa o Model Clinica [cite: app/Models/Clinica.php])
+            // (Isto usa o Model Clinica)
             $clinica = \App\Models\Clinica::where('usuario_id', $user->id)->first();
 
             if (!$clinica) {
@@ -402,9 +508,9 @@ class EmergenciaController extends Controller
                 ->get();
 
             // 3. Carrega as relações 'pet' e 'tutor' manualmente (Lazy Loading)
-            // O frontend 'emergenciaClinica.tsx' [cite: src/components/dashboard/emergenciaClinica.tsx] precisa delas.
+            // O frontend 'emergenciaClinica.tsx' precisa delas.
             // Se houver um erro 500 aqui, o problema está nas definições
-            // das relações 'pet()' ou 'tutor()' no Model 'Emergencia.php' [cite: app/Models/Emergencia.php].
+            // das relações 'pet()' ou 'tutor()' no Model 'Emergencia.php'.
             $emergencias->load(['pet', 'tutor']);
 
             return response()->json($emergencias);

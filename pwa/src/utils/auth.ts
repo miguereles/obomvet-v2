@@ -22,7 +22,9 @@ export function getUser(): {
   name: string; 
   email: string; 
   tipo: "tutor" | "veterinario" | "clinica";
-  tutor_id: string | null; 
+  tutor_id: string | null;
+  clinica_id: string | null;
+  veterinario_id: string | null;
 } | null {
   try {
     if (typeof localStorage === 'undefined') return null;
@@ -31,9 +33,11 @@ export function getUser(): {
     const email = localStorage.getItem('email');
     const tipo = localStorage.getItem('tipo') as "tutor" | "veterinario" | "clinica" | null;
     const tutor_id = localStorage.getItem('tutor_id');
+    const clinica_id = localStorage.getItem('clinica_id');
+    const veterinario_id = localStorage.getItem('veterinario_id');
     
     if (id && name && email && tipo) {
-      return { id, name, email, tipo, tutor_id };
+      return { id, name, email, tipo, tutor_id, clinica_id, veterinario_id };
     }
     return null;
   } catch (e) {

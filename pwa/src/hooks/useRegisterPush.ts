@@ -1,9 +1,7 @@
 import { useEffect } from "react";
-// ✅ 1. Importe o Service
 import PushService from "../services/PushService";
-import { getToken } from "../utils/auth"; // Para verificar se está logado
 
-// Helper function
+// Helper function (mantida como estava)
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = "=".repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -12,19 +10,15 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 }
 
 /**
- * Hook para registrar o Service Worker para Push Notifications
- * Roda apenas se o usuário estiver logado (possui token).
+ * [HOOK ATUALIZADO]
+ * Hook para registrar o Service Worker para Push Notifications.
+ * Agora ele roda para TODOS os usuários (logados e anónimos).
+ * O backend (PushController) decidirá quem é o usuário.
  */
 export function useRegisterPush() {
   
   useEffect(() => {
-    const token = getToken();
-    
-    // Só tenta registrar se o usuário estiver logado
-    if (!token) {
-      console.log("Usuário não logado, pulando registro de Push.");
-      return;
-    }
+    // Esta função agora corre para todos, uma vez por visita.
     
     async function registerPush() {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -43,7 +37,6 @@ export function useRegisterPush() {
         let sub = await reg.pushManager.getSubscription();
         
         if (sub === null) {
-          // Não tem subscrição, cria uma
           console.log("Criando nova subscrição de Push...");
           sub = await reg.pushManager.subscribe({
             userVisibleOnly: true,
@@ -53,10 +46,16 @@ export function useRegisterPush() {
           console.log("Subscrição de Push já existe.");
         }
 
-        // ✅ 2. Use o Service!
-        // Enviamos o objeto JSON da subscrição
-        // O token é enviado automaticamente pelo 'api.ts'
-        await PushService.subscribe(sub.toJSON());
+        // [LÓGICA MANTIDA]
+        // Procura o token anónimo no localStorage.
+        // O 'useEmergencyReport.ts' é responsável por colocar este token aqui.
+        const anonymousTutorToken = localStorage.getItem('anonymousTutorToken');
+
+        // [CHAMADA ATUALIZADA]
+        // Enviamos o JSON da subscrição E o token anónimo (que pode ser null).
+        // O 'api.ts' (interceptor) irá adicionar automaticamente o token
+        // de autenticação se o usuário estiver logado.
+        await PushService.subscribe(sub.toJSON(), anonymousTutorToken);
 
         console.log("✅ Push registrado com sucesso no backend");
       
@@ -71,5 +70,5 @@ export function useRegisterPush() {
 
     registerPush();
     
-  }, []); // Roda apenas uma vez
+  }, []); // Roda apenas uma vez na inicialização da app
 }

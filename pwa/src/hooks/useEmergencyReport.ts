@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+// [IMPORTAÇÃO CORRIGIDA]
 import {
   EmergencyForm,
-  Clinica,
   VisitaTipo,
   URGENCIAS,
   UrgenciaNivel,
@@ -10,8 +10,14 @@ import {
   AIPergunta,
   AIRelatorioFinal,
   ChatMessage,
-} from "../types/emergency.types";
-import { Pet } from "../services/types"; 
+} from "../types/emergency.types"; // Mantém estes
+import { 
+  Pet, 
+  Clinica, 
+  CreateEmergenciaResponse // Importa o tipo de resposta corrigido
+} from "../services/types"; // Importa do ficheiro central de tipos
+// [FIM DA CORREÇÃO]
+
 import IaService from "../services/IaService";
 import { PetService } from "../services/PetService"; 
 import EmergenciaService from "../services/EmergenciaService";
@@ -119,7 +125,7 @@ export function useEmergencyReport(token: string | null) {
     } finally {
       setLoading(null);
     }
-  }, [token]);
+  }, [token]); // A dependência 'token' está correta
 
   useEffect(() => {
     if (aiResponseFromAudio) {
@@ -183,10 +189,12 @@ export function useEmergencyReport(token: string | null) {
     return true;
   }, [formData, visitaTipo, token, textInput]);
   
+  // [FUNÇÃO HANDLESUBMIT CORRIGIDA]
   const handleSubmit = useCallback(
     async (clinicId?: number) => {
       if (!validateForm() || !aiResponse) {
-        setError("Dados do relatório da IA não encontrados.");
+        if (aiResponse) setError("Por favor, preencha todos os campos.");
+        else setError("Dados do relatório da IA não encontrados.");
         return;
       }
 
@@ -237,20 +245,44 @@ export function useEmergencyReport(token: string | null) {
           } catch (e) { console.warn("Falha ao pegar recaptcha", e); }
         }
 
-        const data = await EmergenciaService.create(payload);
+        // 1. CHAMA A API 
+        // A 'data' aqui agora corresponde a 'CreateEmergenciaResponse' (corrigida)
+        const data: CreateEmergenciaResponse = await EmergenciaService.create(payload);
         
-        // ✅ --- INÍCIO DA ADIÇÃO: Salvar ID anónimo ---
+        // [LÓGICA DE ARMAZENAMENTO CORRIGIDA E ADICIONADA]
         if (!token) {
           try {
-            // Guarda o ID da emergência e o nome do pet para o pop-up
-            localStorage.setItem('anonymousEmergencyId', data.emergencia.id.toString());
-            localStorage.setItem('anonymousEmergencyPetName', payload.pet_nome || 'seu pet'); 
+            const emergenciaId = data.emergencia.id.toString();
+            
+            // Lê os dados da resposta (que agora existem graças à correção em types.ts)
+            const publicUuid = data.public_uuid; 
+            const tutorToken = data.edit_tokens?.tutor; // O '?' é importante
+
+            if (publicUuid) {
+              // A página 'acompanhamentoEmergencia.tsx' (src/pages/acompanhamentoEmergencia.tsx) precisa disto
+              localStorage.setItem(`emerg_public_uuid_${emergenciaId}`, publicUuid);
+            }
+            
+            if (tutorToken) {
+              // A página 'acompanhamentoEmergencia.tsx' (src/pages/acompanhamentoEmergencia.tsx) TAMBÉM precisa disto
+              localStorage.setItem(`emerg_tutor_token_${emergenciaId}`, tutorToken);
+              
+              // O 'useRegisterPush.ts' (src/hooks/useRegisterPush.ts) precisa disto
+              localStorage.setItem('anonymousTutorToken', tutorToken);
+            }
+
+            // ✅ [CORREÇÃO ADICIONADA] Salva as chaves que a home.tsx procura
+            localStorage.setItem('anonymousEmergencyId', emergenciaId);
+            localStorage.setItem('anonymousEmergencyPetName', payload.pet_nome || aiResponse.animal.nome || 'seu pet');
+
+
           } catch (e) {
-            console.warn("Falha ao salvar emergência anónima no localStorage", e);
+            console.warn("Falha ao salvar tokens anónimos no localStorage", e);
           }
         }
-        // ✅ --- FIM DA ADIÇÃO ---
         
+        // 3. NAVEGA PARA A PÁGINA DE ACOMPANHAMENTO
+        // ✅ [CORREÇÃO DE ROTA] Navega para a rota correta
         navigate(`/emergencia/${data.emergencia.id}`);
 
       } catch (err: any) {
@@ -260,7 +292,8 @@ export function useEmergencyReport(token: string | null) {
         setLoading(null);
       }
     },
-    [formData, visitaTipo, token, location, setPets, validateForm, aiResponse, textInput, navigate] 
+    // Adicionadas dependências corretas
+    [formData, visitaTipo, token, location, setPets, validateForm, aiResponse, textInput, navigate, PetService, EmergenciaService, IaService] 
   );
   
   const closeModal = () => {

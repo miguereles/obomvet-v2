@@ -7,34 +7,54 @@ return [
     | Default Broadcaster
     |--------------------------------------------------------------------------
     |
-    | Aqui definimos qual driver será usado por padrão.
+    | This option controls the default broadcaster that will be used by the
+    | framework when an event needs to be broadcast. You may set this to
+    | any of the connections defined in the "connections" array below.
+    |
+    | Supported: "pusher", "ably", "redis", "log", "null"
     |
     */
+
     'default' => env('BROADCAST_DRIVER', 'pusher'),
 
     /*
     |--------------------------------------------------------------------------
-    | Broadcaster Connections
+    | Broadcast Connections
     |--------------------------------------------------------------------------
     |
-    | Configurações para cada driver de broadcast.
+    | Here you may define all of the broadcast connections that will be used
+    | to broadcast events to other systems or over websockets. Samples of
+    | each available type of connection are provided inside this array.
     |
     */
+
     'connections' => [
 
         'pusher' => [
-    'driver' => 'pusher',
-    'key' => env('PUSHER_APP_KEY'),
-    'secret' => env('PUSHER_APP_SECRET'),
-    'app_id' => env('PUSHER_APP_ID'),
-    'options' => [
-        'cluster' => env('PUSHER_APP_CLUSTER', 'mt1'),
-        'useTLS' => env('PUSHER_SCHEME', 'http') === 'https',
-        'host' => env('PUSHER_HOST', '127.0.0.1'),
-        'port' => env('PUSHER_PORT', 6001),
-        'scheme' => env('PUSHER_SCHEME', 'http'),
-    ],
-],
+            'driver' => 'pusher',
+            'key' => env('PUSHER_APP_KEY'),
+            'secret' => env('PUSHER_APP_SECRET'),
+            'app_id' => env('PUSHER_APP_ID'),
+            'options' => [
+                'cluster' => env('PUSHER_APP_CLUSTER'),
+                
+                // ✅ [CORREÇÃO]
+                // As linhas 'host', 'port', e 'scheme' foram REMOVIDAS.
+                // Ao removê-las, o Pusher usará automaticamente os
+                // endereços da nuvem (ex: 'api-sa1.pusher.com')
+                // que correspondem ao seu frontend.
+
+                // 'host' => env('PUSHER_HOST', '127.0.0.1'), // Removido
+                // 'port' => env('PUSHER_PORT', 6001), // Removido
+                // 'scheme' => env('PUSHER_SCHEME', 'http'), // Removido
+
+                'encrypted' => true,
+                'useTLS' => env('PUSHER_SCHEME', 'https') === 'https', // Mantém 'useTLS'
+            ],
+            'client_options' => [
+                // Opções de cliente (se necessário)
+            ],
+        ],
 
         'ably' => [
             'driver' => 'ably',

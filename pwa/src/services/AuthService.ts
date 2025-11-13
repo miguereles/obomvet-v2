@@ -1,7 +1,13 @@
 import api from './api';
-import { LoginResponse, RegisterResponse } from './types';
+// Os tipos 'LoginResponse' e 'RegisterResponse' devem estar definidos em './types'
+import { LoginResponse, RegisterResponse } from './types'; 
 // Importamos suas funções utilitárias para salvar no localStorage
-import { setTokenFallback, setUserFallback, clearTokenFallback } from '../utils/auth';
+import { 
+  setTokenFallback, 
+  setUserFallback, 
+  clearTokenFallback 
+} from '../utils/auth';
+// Importa a função para atualizar o token do Echo
 import { setBroadcastToken } from './echo';
 
 const AuthService = {
@@ -13,20 +19,22 @@ const AuthService = {
   login: async (credentials: { email: string, password: string }): Promise<LoginResponse> => {
     
     // O 'api.post' já usa a baseURL (http://.../api)
-  // Make the login request
-  const { data } = await api.post<LoginResponse>('/auth/login', credentials);
+    // Make the login request
+    const { data } = await api.post<LoginResponse>('/auth/login', credentials);
     
     // Se o login for bem-sucedido, salvamos os dados
       if (data.access_token) {
       // Usamos as mesmas funções que seu login.tsx usava
       setTokenFallback(data.access_token);
-      setUserFallback(data);
-      // Also update the broadcast token used by the Echo authorizer so private
-      // channel auth uses the freshest token without waiting for a page reload.
+      setUserFallback(data); // Assumindo que 'data' é o objeto de usuário ou LoginResponse
+      
+      // Também atualiza o token de broadcast usado pelo autorizador do Echo
+      // para que a autenticação do canal privado use o token mais recente
+      // sem esperar um recarregamento da página.
       try {
         setBroadcastToken(data.access_token);
       } catch (e) {
-        // noop in non-browser/test environments
+        console.warn('setBroadcastToken falhou, talvez em ambiente de teste.', e);
       }
     }
     return data;
@@ -56,8 +64,11 @@ const AuthService = {
         // Limpa o storage local de qualquer maneira
         clearTokenFallback(); // do seu utils/auth.ts
         try {
+          // Limpa o token do Echo
           setBroadcastToken(null);
-        } catch (e) {}
+        } catch (e) {
+          console.warn('setBroadcastToken(null) falhou.', e);
+        }
     }
   },
 

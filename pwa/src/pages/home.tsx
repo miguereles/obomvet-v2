@@ -108,48 +108,66 @@ export default function Home() {
           setIsCheckingEmergency(false);
         }
       })();
-      // ✅ --- Lógica para utilizador anónimo ---
+    // ✅ --- Lógica para utilizador anónimo (REESCRITA) ---
     } else if (!user) {
       // Se o utilizador está deslogado, verifica o localStorage
       setIsCheckingEmergency(true);
       (async () => {
         try {
+          // 1. Procura pelo ID genérico que o hook (agora corrigido) salva
           const anonEmergencyId = localStorage.getItem("anonymousEmergencyId");
+          
           if (anonEmergencyId) {
-            // Encontrou um ID anónimo, busca os dados da emergência
-            // A rota 'show' (getById) é pública
-            const emgData = await EmergenciaService.getById(anonEmergencyId);
+            // 2. Usa esse ID para encontrar o UUID público
+            const publicUuid = localStorage.getItem(`emerg_public_uuid_${anonEmergencyId}`);
+
+            if (!publicUuid) {
+              // Se não tem UUID, não podemos buscar. Limpa.
+              localStorage.removeItem("anonymousEmergencyId");
+              localStorage.removeItem("anonymousEmergencyPetName");
+              setIsCheckingEmergency(false);
+              return;
+            }
+
+            // 3. Usa a rota PÚBLICA com o UUID para buscar os dados
+            const { emergencia: emgData } = await EmergenciaService.getPublicByUuid(publicUuid);
 
             const activeStatus: Emergencia["status"][] = [
               "aberta",
               "assigned",
               "accepted",
               "em_atendimento",
-              "pendente", // ✅ Correção para o pop-up
+              "pendente",
             ];
 
             if (activeStatus.includes(emgData.status)) {
-              // A emergência ainda está ativa, mostra o pop-up
+              // 4. Emergência ativa, mostra o pop-up
               const petName = localStorage.getItem("anonymousEmergencyPetName");
-              // Simula a estrutura do objeto 'pet' que o pop-up espera
               emgData.pet = { nome: petName || "seu pet" };
               setActiveEmergency(emgData);
             } else {
-              // A emergência foi concluída ou cancelada, limpa o localStorage
+              // 5. Emergência inativa, limpa TODOS os dados
               localStorage.removeItem("anonymousEmergencyId");
               localStorage.removeItem("anonymousEmergencyPetName");
+              localStorage.removeItem(`emerg_public_uuid_${anonEmergencyId}`);
+              localStorage.removeItem(`emerg_tutor_token_${anonEmergencyId}`);
             }
           }
         } catch (error) {
           console.error("Erro ao verificar emergência anónima:", error);
-          // Limpa se o ID for inválido (ex: emergência apagada)
-          localStorage.removeItem("anonymousEmergencyId");
-          localStorage.removeItem("anonymousEmergencyPetName");
+          // 6. Limpa tudo em caso de erro (ex: 404)
+          const anonEmergencyId = localStorage.getItem("anonymousEmergencyId");
+          if (anonEmergencyId) {
+            localStorage.removeItem("anonymousEmergencyId");
+            localStorage.removeItem("anonymousEmergencyPetName");
+            localStorage.removeItem(`emerg_public_uuid_${anonEmergencyId}`);
+            localStorage.removeItem(`emerg_tutor_token_${anonEmergencyId}`);
+          }
         } finally {
           setIsCheckingEmergency(false);
         }
       })();
-      // ✅ --- FIM DA ADIÇÃO ---
+      // ✅ --- FIM DA CORREÇÃO ---
     } else {
       setIsCheckingEmergency(false); // Não é tutor, não verifica
     }
