@@ -349,20 +349,7 @@ export default function RegisteredClinicPage() {
                     </div>
                 </div>
 
-                {/* --- MAPA MOVIDO PARA CÁ --- */}
-                {selectedProvider.localizacao && (
-                  <div className="h-64 w-full rounded-lg overflow-hidden border border-gray-200 shadow-sm">
-                    <ClinicMap
-                      clinics={[selectedProvider]} // Envia apenas o provider selecionado
-                      // userLocation é passado como objeto, e ClinicMap deve lidar com a conversão se necessário
-                      userLocation={userLocation ? [userLocation.latitude, userLocation.longitude] as [number, number] : null}
-                      selectedClinic={selectedProvider}
-                      hoveredClinic={null}
-                    />
-                  </div>
-                )}
-                {/* --- FIM DO MAPA --- */}
-
+                
                 {/* Botões de Ação */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <button

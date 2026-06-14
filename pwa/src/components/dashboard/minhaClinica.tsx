@@ -4,15 +4,15 @@ import { Clinica } from "../../services/types";
 import ClinicaService from "../../services/ClinicaService";
 import { getUser } from "../../utils/auth";
 
-const PLACEHOLDER_IMAGE = "https://via.placeholder.com/150/EAF9F5/004E64?text=SEM+FOTO";
+const PLACEHOLDER_IMAGE = "https://placehold.co/150x150/EAF9F5/004E64?text=SEM+FOTO";
 
-// ✅ NOVO: Função auxiliar para resolver a URL absoluta da imagem
+// ✅ Função auxiliar robusta para resolver a URL absoluta da imagem
 function resolveImageUrl(relativePath: string | undefined): string {
     if (!relativePath) {
         return PLACEHOLDER_IMAGE;
     }
     // Se já é uma URL absoluta (ex: se o Storage::url() retorna o domínio)
-    if (relativePath.startsWith('http')) {
+    if (relativePath.startsWith('http') || relativePath.startsWith('blob:')) {
         return relativePath;
     }
     
@@ -23,8 +23,18 @@ function resolveImageUrl(relativePath: string | undefined): string {
     // Constrói a URL: http://localhost:8000 + /storage/...
     const base = API_BASE.replace(/\/api$/, '').replace(/\/$/, '');
     
-    // Garante que não há barras duplas (ex: http://localhost:8000/storage/...)
-    return `${base}${relativePath.startsWith('/') ? '' : '/'}${relativePath}`;
+    // Remove barras iniciais para normalizar o caminho
+    let cleanPath = relativePath.replace(/^\/+/, "");
+
+    // Garante que o caminho comece com 'storage/'
+    if (cleanPath.startsWith("public/")) {
+        cleanPath = cleanPath.replace("public/", "storage/");
+    } else if (!cleanPath.startsWith("storage/")) {
+        cleanPath = "storage/" + cleanPath;
+    }
+    
+    // Concatena a base do projeto com o caminho limpo
+    return `${base}/${cleanPath}`;
 }
 
 
@@ -33,6 +43,9 @@ export default function MinhaClinica() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Estado para forçar atualização da imagem (cache busting)
+  const [imageKey, setImageKey] = useState(Date.now());
+
 
   // FETCH REAL: Carrega os dados da clínica logada
   useEffect(() => {
@@ -64,6 +77,7 @@ export default function MinhaClinica() {
     setMessage(null);
   };
 
+  // Upload de foto — Com Cache-Busting
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !data || !data.id) return;
@@ -73,14 +87,21 @@ export default function MinhaClinica() {
     try {
         const { foto_url } = await ClinicaService.uploadFoto(data.id, file); 
         
+        // ✅ CORREÇÃO DE CACHE: Adiciona um timestamp na URL
+        const cacheBustedUrl = foto_url.includes('?') 
+            ? `${foto_url}&t=${Date.now()}` 
+            : `${foto_url}?t=${Date.now()}`;
+
         // Atualiza o estado com a nova URL retornada pelo backend
-        setData(prev => ({ ...prev, foto_url }));
+        setData(prev => ({ ...prev, foto_url: cacheBustedUrl }));
+        setImageKey(Date.now()); // Força o re-render
         setMessage({ text: "Foto atualizada com sucesso!", type: 'success' });
     } catch (err: any) {
         const errorMsg = err.response?.data?.message || "Erro ao fazer upload da foto.";
         setMessage({ text: errorMsg, type: 'error' });
     } finally {
         setLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -126,21 +147,33 @@ export default function MinhaClinica() {
           <div className="flex flex-col items-center gap-3">
             <div className="relative w-40 h-40 rounded-full overflow-hidden shadow-md border-4 border-[#25A18E]">
               <img
-                // ✅ CORRIGIDO: Usando a função auxiliar para resolver o URL
+                key={imageKey} // Força o re-render
                 src={resolveImageUrl(data.foto_url)}
                 alt="Foto da Clínica"
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                    // Se falhar ao carregar, mostra o placeholder
+                    e.currentTarget.src = PLACEHOLDER_IMAGE;
+                    e.currentTarget.onerror = null; // Previne loop infinito
+                }}
               />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={loading}
-                className="absolute inset-0 bg-black/40 hover:bg-black/60 transition-colors flex items-center justify-center text-white"
+                className="absolute inset-0 bg-black/40 hover:bg-black/60 transition-colors flex items-center justify-center text-white opacity-0 hover:opacity-100"
                 title="Trocar Foto"
               >
                 <Camera size={24} />
               </button>
             </div>
+            <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-sm text-[#25A18E] font-semibold hover:underline"
+            >
+                Alterar Foto
+            </button>
             <input
               type="file"
               ref={fileInputRef}
@@ -149,7 +182,6 @@ export default function MinhaClinica() {
               accept="image/*"
               disabled={loading}
             />
-            <span className="text-xs text-gray-500">Clique na foto para trocar</span>
           </div>
           
           <div className="flex-1">

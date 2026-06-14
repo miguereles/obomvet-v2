@@ -1,10 +1,11 @@
 import axios, { InternalAxiosRequestConfig, AxiosError } from 'axios';
-// Importa as funções que manipulam o localStorage
-import { clearTokenFallback, setTokenFallback } from '../utils/auth.ts'; 
-// Importa a função que atualiza o token do Echo
-import { setBroadcastToken } from './echo.ts';
+// Importa getToken para pegar o token atual diretamente
+import { clearTokenFallback, setTokenFallback, getToken } from '../utils/auth';
+import { setBroadcastToken } from './echo';
 
 const API_BASE_URL = `${import.meta.env.VITE_API_URL}/api`;
+
+// Instância principal com interceptors
 const api = axios.create({
     baseURL: API_BASE_URL,
     withCredentials: false,
@@ -14,17 +15,16 @@ const api = axios.create({
     }
 });
 
-// Interceptor de REQUISIÇÃO: Adiciona o token JWT ao header
+// Interceptor de REQUISIÇÃO
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('token');
+    const token = getToken();
     if (token && config.headers && !config.headers.Authorization) {
         config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
 });
 
-
-// --- LÓGICA DE REFRESH TOKEN (Interceptor de RESPOSTA) ---
+// --- LÓGICA DE REFRESH TOKEN ---
 
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: (value: unknown) => void, reject: (reason?: any) => void }> = [];
@@ -45,61 +45,92 @@ api.interceptors.response.use(
     async (error: AxiosError) => {
         
         const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+        
+        // Se não houver config, apenas rejeita
         if (!originalRequest) return Promise.reject(error);
 
-        // Verifica se foi 401 E não é uma tentativa de refresh (evita loop)
-        if (error.response?.status === 401 && originalRequest.url !== '/auth/refresh') {
+        // 1. Evita loop infinito: Se a URL que falhou JÁ É a de refresh, não tenta de novo.
+        if (originalRequest.url?.includes('/auth/refresh')) {
+            return Promise.reject(error);
+        }
+
+        // 2. Se erro for 401 e ainda não tentamos retry
+        if (error.response?.status === 401 && !originalRequest._retry) {
             
             if (isRefreshing) {
-                // Se já estamos buscando um token novo, bota na fila
+                // Se já está renovando, põe na fila
                 return new Promise((resolve, reject) => {
                     failedQueue.push({ resolve, reject });
                 }).then(token => {
-                    originalRequest.headers!['Authorization'] = 'Bearer ' + token;
+                    // Atualiza o header da requisição na fila
+                    if (originalRequest.headers) {
+                        originalRequest.headers['Authorization'] = 'Bearer ' + token;
+                    }
                     return api(originalRequest);
                 }).catch(err => {
                     return Promise.reject(err);
                 });
             }
 
-            // Marca que estamos buscando um token novo
             originalRequest._retry = true;
             isRefreshing = true;
             
             try {
-                console.log("Interceptor: Token expirado. Buscando novo token...");
-                // Chama a rota de refresh diretamente
-                const { data } = await api.post('/auth/refresh');
+                console.log("Interceptor: Token expirado. Tentando renovar...");
+                
+                const currentToken = getToken();
+
+                // 3. USAR AXIOS PURO para o refresh para evitar loops
+                const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Accept': 'application/json'
+                    }
+                });
+
                 const newAccessToken = data.access_token;
                 
                 if (newAccessToken) {
-                    console.log("Interceptor: Token renovado.");
-                    // Salva o novo token
+                    console.log("Interceptor: Token renovado com sucesso.");
+                    
+                    // Salva e Atualiza
                     setTokenFallback(newAccessToken);
                     setBroadcastToken(newAccessToken);
                     
-                    // Atualiza o header da requisição original
+                    // Atualiza o default para futuras requisições
                     api.defaults.headers.common['Authorization'] = 'Bearer ' + newAccessToken;
-                    originalRequest.headers!['Authorization'] = 'Bearer ' + newAccessToken;
                     
-                    // Libera a fila com o novo token
+                    // Libera a fila
                     processQueue(null, newAccessToken);
                     
-                    // Tenta a requisição original novamente
-                    return api(originalRequest);
-                } else {
-                     throw new Error("Resposta de refresh não continha access_token");
+                    // [CORREÇÃO CRÍTICA]
+                    // Cria um NOVO objeto de config para o retry garantindo o header novo.
+                    // Modificar originalRequest.headers diretamente pode falhar em algumas versões do Axios.
+                    const retryConfig = {
+                        ...originalRequest,
+                        headers: {
+                            ...originalRequest.headers,
+                            'Authorization': `Bearer ${newAccessToken}`
+                        }
+                    };
+                    
+                    // Refaz a requisição original com o novo config
+                    return api(retryConfig);
                 }
 
             } catch (refreshError: any) {
-                console.error("Interceptor: Falha ao renovar token. Deslogando.", refreshError);
-                // Se o refresh falhar, desloga o usuário
+                console.error("Interceptor: Falha no refresh. Deslogando...", refreshError);
+                
+                // Falha a fila
                 processQueue(refreshError as AxiosError, null);
+                
+                // Limpa dados
                 clearTokenFallback();
                 setBroadcastToken(null);
                 
-                if (window.location.pathname !== '/login') {
-                     window.location.href = '/login';
+                // Redireciona para login se não estiver lá
+                if (!window.location.pathname.includes('/login')) {
+                     window.location.replace('/login');
                 }
                 
                 return Promise.reject(refreshError);
@@ -108,7 +139,6 @@ api.interceptors.response.use(
             }
         }
 
-        // Para qualquer outro erro (500, 404, 422 etc.), apenas rejeite
         return Promise.reject(error);
     }
 );

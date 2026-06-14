@@ -14,46 +14,45 @@ import ClinicPage from "./pages/clinicPage";
 import RegisteredClinicPage from "./pages/registeredClinicPage";
 import { DarkModeProvider } from "./accessibility/DarkModeContext";
 import 'tippy.js/dist/tippy.css';
-// ❌ O import de 'IniciarEmergencia' foi removido
 import AcompanhamentoEmergencia from "./pages/acompanhamentoEmergencia";
 import { useVLibras } from "./accessibility/useVlibras";
-
+// ✅ Importa o componente global
+import GlobalEmergencyPopup from "./components/GlobalEmergencyPopup";
 
 function PrivateRoute({ children }: { children: JSX.Element }) {
   const token = getToken();
   return token ? children : <Navigate to="/" />;
 }
 
-
 export default function App() {
   React.useEffect(() => {
-  if ('Notification' in window) {
-    Notification.requestPermission().then(permission => {
-      console.log('Permissão de notificações:', permission);
-    });
-  }
-}, []);
+    if ('Notification' in window) {
+      Notification.requestPermission().catch(() => {
+        // Permissão de notificações não concedida ou navegador não suportado.
+      });
+    }
+  }, []);
 
   useVLibras();
-    
-    
 
   return (
     <DarkModeProvider>
-      <div vw="true" className="enabled">
-        <div vw-access-button="true" className="active"></div>
-        <div vw-plugin-wrapper="true">
+      <div data-vw="true" className="enabled">
+        <div data-vw-access-button="true" className="active"></div>
+        <div data-vw-plugin-wrapper="true">
           <div className="vw-plugin-top-wrapper"></div>
         </div>
       </div>
 
       <Router>
+        {/* ✅ O componente global fica aqui, dentro do Router mas fora das Routes */}
+        <GlobalEmergencyPopup />
+
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-          {/* ❌ A rota "/iniciar-emergencia" foi removida */}
           <Route path="/reportInput" element={<ReportInput />} />
           <Route path="/emergencia/:id" element={<AcompanhamentoEmergencia />} />
           <Route path="/features" element={<Features />} />

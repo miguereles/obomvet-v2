@@ -1,51 +1,58 @@
-// src/hooks/usePets.ts
-import { useState, useEffect } from "react";
-// 1. Importe o tipo 'Pet' completo do service
-import { Pet } from "../services/types"; 
-// 2. Importe o 'TutorService' para buscar os pets do usuário
+// hooks/usePets.ts
+import { useState, useCallback } from "react";
+import { PetService } from "../services/PetService";
 import TutorService from "../services/TutorService";
-// ❌ getUser não é mais necessário aqui
-// import { getUser } from "../utils/auth"; 
+import { Pet } from "../services/types";
 
-export function usePets(token: string | null) {
-  // 3. O estado agora usa o tipo 'Pet' completo (onde id é 'number')
+export function usePets() {
   const [pets, setPets] = useState<Pet[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const loadPets = async () => {
-      if (token) {
-        try {
-          // ✅ 4. Use a nova função do service (mais segura)
-          // Ela usa o token para encontrar o usuário e o tutor no backend
-          // Esta é a linha que corrige o erro!
-          const tutor = await TutorService.getMeuTutor();
-          
-          if (!tutor || !tutor.id) {
-            console.warn("Nenhum perfil de tutor encontrado para este usuário.");
-            setPets([]);
-            return;
+  const fetchPets = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Busca via TutorService
+      const tutorData = await TutorService.getMeuTutor();
+      const petsArray = tutorData.pets || [];
+      
+      // Recalcula idades
+      const hoje = new Date();
+      petsArray.forEach((p: Pet) => {
+        if (p.data_nascimento) {
+          const nascimento = new Date(p.data_nascimento);
+          let idade = hoje.getFullYear() - nascimento.getFullYear();
+          const mesDiff = hoje.getMonth() - nascimento.getMonth();
+          if (mesDiff < 0 || (mesDiff === 0 && hoje.getDate() < nascimento.getDate())) {
+            idade--;
           }
-          
-          // 5. O backend já deve retornar os pets dentro do objeto tutor
-          // (O método 'meu' no TutorController já faz o with(['pets']))
-          const fetchedPets = tutor.pets || [];
-          
-          console.log("Pets recebidos:", fetchedPets);
-          setPets(fetchedPets);
-
-        } catch (err) {
-          // O interceptador 401 em api.ts já deve tratar tokens expirados
-          console.error("Erro ao buscar pets:", err);
-          setPets([]); // Evita travamento em caso de erro
+          p.idade = idade;
         }
-      } else {
-        console.log("Nenhum token encontrado, não buscará pets.");
-        setPets([]); // Garante que o array esteja definido
-      }
-    };
-    
-    loadPets();
-  }, [token]); // Roda sempre que o token (login/logout) mudar
+      });
+      
+      setPets(petsArray);
+    } catch (error: any) {
+      console.error("Erro ao buscar pets", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  return { pets, setPets };
+  const removePet = async (id: number) => {
+    try {
+      await PetService.delete(id);
+      setPets((prev) => prev.filter((p) => p.id !== id));
+      return true; // Sucesso
+    } catch (error: any) {
+      console.error("Erro ao excluir pet:", error);
+      return false; // Falha
+    }
+  };
+
+  return {
+    pets,
+    setPets,
+    loading,
+    fetchPets,
+    removePet
+  };
 }

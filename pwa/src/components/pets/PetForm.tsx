@@ -214,7 +214,12 @@ export default function PetForm({ onSubmit, onDelete, onCancel, initialData, isE
                 </label>
                 <select
                   value={formData.sexo || ''}
-                  onChange={e => setFormData(d => ({ ...d, sexo: e.target.value as 'M' | 'F' | undefined }))}
+                  onChange={(e) =>
+                    setFormData((d) => ({
+                      ...d,
+                      sexo: e.target.value ? (e.target.value as 'M' | 'F') : undefined,
+                    }))
+                  }
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#25A18E] focus:border-transparent"
                 >
                   <option value="">Selecione</option>
@@ -286,7 +291,7 @@ export default function PetForm({ onSubmit, onDelete, onCancel, initialData, isE
             </button>
           </div>
         </form>
-      </div>
+      </motion.div>
     </motion.div>
   );
 }

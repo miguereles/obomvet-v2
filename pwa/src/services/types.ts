@@ -5,8 +5,9 @@ export interface Usuario {
   name: string;
   nome_completo?: string;
   email: string;
-  tipo: 'tutor' | 'veterinario' | 'clinica';
+  tipo: 'tutor' | 'veterinario' | 'clinica' | 'admin';
   telefone_principal?: string;
+  approved?: boolean;
   // Relacionamentos que podem ser carregados
   tutor?: Tutor;
   veterinario?: Veterinario;
@@ -18,8 +19,11 @@ export interface Tutor {
   usuario_id: number | null; // Pode ser nulo para tutores anônimos
   nome_completo: string;
   telefone_principal: string;
-  telefone_alternativo?: string;
+  telefone_alternativo?: string | null;
   cpf: string;
+  descricao?: string;
+  foto_url?: string; // NOVO: URL da foto de perfil
+  email_contato?: string; // NOVO: E-mail de contato
   // Propriedades de token anônimo
   anonymous_edit_token?: string;
   anonymous_edit_token_expires_at?: string;
@@ -34,6 +38,8 @@ export interface Pet {
   nome: string;
   especie: string;
   raca?: string;
+  sexo?: 'Macho' | 'Fêmea' | string | null; // Novo campo
+  castrado?: boolean; // Novo campo
   data_nascimento?: string | null;
   idade?: number; // Campo calculado no frontend
   peso?: number;
@@ -62,6 +68,7 @@ export interface Clinica {
   foto_url?: string; // NOVO: URL da foto de perfil
   // Relacionamentos
   veterinarios?: Veterinario[];
+  usuario?: Usuario;
 }
 
 export interface Veterinario {
@@ -74,7 +81,7 @@ export interface Veterinario {
   telefone_emergencia: string;
   disponivel_24h: boolean;
   autonomo: boolean;
-  area_atuacao?: any; // JSON
+  area_atuacao?: Record<string, unknown> | null; // JSON
   endereco?: string;
   lat?: number;
   lng?: number;
@@ -84,6 +91,7 @@ export interface Veterinario {
   email?: string; 
   // Alias que seu frontend usa
   telefone_principal?: string;
+  usuario?: Usuario;
 }
 
 export interface Emergencia {
@@ -101,12 +109,18 @@ export interface Emergencia {
   data_abertura: string;
   data_conclusao?: string | null;
   // Relacionamentos carregados
-  pet?: { nome: string };
-  tutor?: { nome_completo: string };
+  pet?: Pet;
+  tutor?: Tutor | null;
   clinica?: Clinica;
   // Campos que seus componentes usam
   pet_nome?: string; // Alias de `emergenciaDashboard.tsx`
   created_at?: string; // Alias de `emergenciaClinica.tsx`
+  nome_tutor?: string;
+  telefone_tutor?: string;
+  descricao_caso?: string;
+  lat?: number;
+  lng?: number;
+  endereco?: string;
 }
 
 export interface HistoricoAtendimento {

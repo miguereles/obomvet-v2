@@ -1,80 +1,148 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Download, X } from "lucide-react";
+import { ArrowRight, Smartphone, X } from "lucide-react";
+import { useDarkMode } from "./DarkModeContext.tsx"; // Importe se estiver usando Dark Mode globalmente
+
+// Definição global do evento de instalação
+let deferredPrompt: any;
 
 export default function InstallPwaCard() {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [visible, setVisible] = useState(false);
+    const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+    const [installing, setInstalling] = useState(false);
+    const [installed, setInstalled] = useState(false);
+    // const { darkMode } = useDarkMode(); // Descomente se estiver usando Dark Mode
 
-  useEffect(() => {
-    const handler = (e: any) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setVisible(true);
+    useEffect(() => {
+        const handler = (e: any) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            
+            // Só mostra o card se não estiver já instalado ou dispensado
+            if (!window.matchMedia('(display-mode: standalone)').matches && 
+                !installed && 
+                localStorage.getItem('pwaDismissed') !== 'true'
+            ) {
+                setShowInstallPrompt(true);
+            }
+        };
+
+        window.addEventListener('beforeinstallprompt', handler);
+
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            setInstalled(true);
+        }
+
+        return () => {
+            window.removeEventListener('beforeinstallprompt', handler);
+        };
+    }, [installed]);
+
+    const handleInstall = async () => {
+        if (!deferredPrompt) {
+            console.error("Evento de instalação não disponível.");
+            return;
+        }
+
+        setInstalling(true);
+        
+        deferredPrompt.prompt();
+        
+        const { outcome } = await deferredPrompt.userChoice;
+        
+        if (outcome === 'accepted') {
+            setInstalled(true);
+            setShowInstallPrompt(false);
+            localStorage.removeItem('pwaDismissed');
+        } else {
+            setInstalling(false);
+            // Opcional: Dispensar por um tempo ou até próxima visita
+        }
     };
-    window.addEventListener("beforeinstallprompt", handler);
-    return () => window.removeEventListener("beforeinstallprompt", handler);
-  }, []);
+    
+    // Lógica de fechar/dispensar
+    const handleDismiss = () => {
+        setShowInstallPrompt(false);
+        // Marcamos que o usuário dispensou, para não re-aparecer na próxima recarga
+        localStorage.setItem('pwaDismissed', 'true'); 
+    };
 
-  const handleInstall = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      if (choice.outcome === "accepted") {
-        setVisible(false);
-      }
+    if (!showInstallPrompt || installed) {
+        return null;
     }
-  };
 
-  return (
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          initial={{ opacity: 0, y: 50, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 50, scale: 0.9 }}
-          transition={{ duration: 0.4, type: "spring" }}
-          className="fixed bottom-6 right-6 z-50"
-        >
-          <motion.div
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="relative bg-yellow-400 text-gray-900 p-5 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.25)]
-                       border-2 border-yellow-500 flex items-start gap-4 max-w-sm cursor-pointer
-                       hover:shadow-[0_15px_40px_rgba(0,0,0,0.3)] transition-all duration-300"
-            onClick={handleInstall}
-          >
-            <div className="bg-white p-3 rounded-full shadow-md">
-              <Download className="w-6 h-6 text-yellow-600" />
-            </div>
-            <div className="flex-1">
-              <h2 className="text-lg font-bold">Instale o oBomVet</h2>
-              <p className="text-sm opacity-90">
-                Adicione à tela inicial para acesso rápido e notificações em tempo real.
-              </p>
-            </div>
-            <button
-              className="absolute top-2 right-2 text-gray-600 hover:text-gray-800"
-              onClick={(e) => {
-                e.stopPropagation();
-                setVisible(false);
-              }}
+    return (
+        <AnimatePresence>
+            <motion.div
+                initial={{ opacity: 0, x: 50, y: -20 }}
+                animate={{ opacity: 1, x: 0, y: 0 }}
+                exit={{ opacity: 0, x: 50 }}
+                transition={{ type: "spring", stiffness: 100, damping: 20 }}
+                // ✅ POSICIONAMENTO NOVO: Canto superior direito, abaixo da navbar
+                className="fixed top-20 right-4 z-[900] p-2" 
             >
-              <X className="w-5 h-5" />
-            </button>
-          </motion.div>
+                <div
+                    className="
+                        bg-white dark:bg-gray-800 rounded-xl shadow-xl transition-shadow duration-300
+                        max-w-xs w-full border border-l-4 border-teal-500 dark:border-teal-400
+                        flex flex-col items-center justify-between p-3 gap-3 
+                        relative
+                    "
+                >
+                    {/* Botão de Fechar no canto */}
+                    <button
+                        onClick={handleDismiss}
+                        className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-500 transition-colors z-10"
+                        aria-label="Fechar sugestão de instalação"
+                    >
+                        <X size={16} />
+                    </button>
 
-          {/* Efeito de flutuação leve */}
-          <motion.div
-            className="absolute inset-0 rounded-2xl blur-2xl bg-yellow-400 opacity-40 -z-10"
-            animate={{
-              y: [0, -8, 0],
-              opacity: [0.3, 0.5, 0.3],
-            }}
-            transition={{ duration: 3, repeat: Infinity }}
-          />
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
+                    {/* Conteúdo Principal */}
+                    <div className="flex items-center gap-3 text-left w-full pr-4">
+                        <Smartphone 
+                            size={28} 
+                            className="text-teal-600 dark:text-teal-400 flex-shrink-0" 
+                            aria-hidden="true" 
+                        />
+                        <div>
+                            <h3 className="text-base font-bold text-[#004E64] dark:text-white leading-snug">
+                                Instale o App
+                            </h3>
+                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                                Adicione o oBomVet à sua tela inicial para acesso rápido.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Botão de Ação */}
+                    <motion.button
+                        onClick={handleInstall}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        disabled={installing}
+                        className={`
+                            w-full px-4 py-2 text-sm rounded-lg font-semibold text-white transition-all duration-300
+                            shadow-md shadow-teal-400/50 dark:shadow-teal-600/50
+                            flex items-center justify-center gap-2 flex-shrink-0
+                            ${installing 
+                                ? 'bg-gray-400 cursor-not-allowed' 
+                                : 'bg-gradient-to-r from-teal-500 to-green-600 hover:from-teal-600 hover:to-green-700'
+                            }
+                        `}
+                    >
+                        {installing ? (
+                            <span className="flex items-center gap-2">
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                Instalando...
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-2">
+                                Instalar Agora <ArrowRight size={16} />
+                            </span>
+                        )}
+                    </motion.button>
+                </div>
+            </motion.div>
+        </AnimatePresence>
+    );
 }

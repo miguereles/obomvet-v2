@@ -4,7 +4,6 @@ import { getToken, clearTokenFallback, getUser } from "../utils/auth";
 import TutorDashboard from "../components/dashboard/tutorDashboard";
 import VeterinarioDashboard from "../components/dashboard/veterinarioDashboard";
 import ClinicaDashboard from "../components/dashboard/clinicaDashboard";
-import { echo } from "../services/echo";
 import { useRegisterPush } from "../hooks";
 import UsuarioService from "../services/UsuarioService";
 import ProfileCompletionPrompt from "../components/dashboard/profileCompletionPrompt";
@@ -13,6 +12,11 @@ import ClinicaService from "../services/ClinicaService";
 import VeterinarioService from "../services/VeterinarioService";
 import TutorService from "../services/TutorService";
 import AdminDashboard from "../components/dashboard/adminDashboard";
+
+type DashboardSection = "home" | "emergencias" | "pets" | "perfil" | "historico" | "minha_clinica";
+type TutorSection = "home" | "emergencias" | "pets" | "perfil" | "historico";
+type VetSection = "home" | "historico" | "meu_perfil";
+type ClinicaSection = "home" | "emergencias" | "veterinarios" | "minha_clinica";
 
 interface User extends Usuario {}
 
@@ -54,13 +58,14 @@ export default function Dashboard() {
         } else if (baseUser.tipo === "tutor") {
           const tutorProfile = await TutorService.getMeuTutor();
           baseUser.tutor = tutorProfile;
-        }
-        else if (baseUser.tipo === "admin") {
+        } else if (baseUser.tipo === "admin") {
+          // Admin não tem perfil adicional a carregar no dashboard.
         }
         setUser(baseUser);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Erro ao carregar dados do dashboard:", err);
-        setError(err.message || "Erro ao buscar dados do usuário.");
+        const message = err instanceof Error ? err.message : String(err);
+        setError(message || "Erro ao buscar dados do usuário.");
         clearTokenFallback();
         navigate("/");
       } finally {
@@ -70,37 +75,41 @@ export default function Dashboard() {
   }, [navigate]);
 
   useEffect(() => {
-    if (!user || user.tipo === "tutor" || user.tipo === "admin" || loading) {
+    if (!user || loading) {
       setShowProfilePrompt(false);
       return;
     }
 
     const checkProfileCompletion = (user: User) => {
       const fields: string[] = [];
-      let profile: any = null;
 
       if (user.tipo === "clinica" && user.clinica) {
-        profile = user.clinica;
-        if (!profile.descricao) fields.push("Descrição");
-        if (!profile.foto_url) fields.push("Foto de Perfil");
+        if (!user.clinica.descricao) fields.push("Descrição");
+        if (!user.clinica.foto_url) fields.push("Foto de Perfil");
+        if (!user.clinica.nome_fantasia) fields.push("Nome Fantasia");
+        if (!user.clinica.email_contato) fields.push("E-mail de Contato");
+        if (!user.clinica.telefone_emergencia) fields.push("Telefone de Emergência");
         if (
-          !profile.horario_funcionamento ||
-          profile.horario_funcionamento.includes("08:00-18:00")
-        )
+          !user.clinica.horario_funcionamento ||
+          user.clinica.horario_funcionamento.includes("08:00-18:00")
+        ) {
           fields.push("Horário de Funcionamento");
+        }
       } else if (user.tipo === "veterinario" && user.veterinario) {
-        profile = user.veterinario;
-        if (!profile.descricao) fields.push("Descrição");
-        if (!profile.foto_url) fields.push("Foto de Perfil");
-        if (!profile.especialidade) fields.push("Especialidade");
-        if (!profile.endereco) fields.push("Endereço/Localização");
+        if (!user.veterinario.descricao) fields.push("Descrição");
+        if (!user.veterinario.foto_url) fields.push("Foto de Perfil");
+        if (!user.veterinario.especialidade) fields.push("Especialidade");
+        if (!user.veterinario.endereco) fields.push("Endereço/Localização");
+        if (!user.veterinario.telefone_emergencia) fields.push("Telefone de Emergência");
+      } else if (user.tipo === "tutor" && user.tutor) {
+        if (!user.tutor.nome_completo) fields.push("Nome Completo");
+        if (!user.tutor.foto_url) fields.push("Foto de Perfil");
+        if (!user.tutor.telefone_principal) fields.push("Telefone Principal");
+        if (!user.tutor.email_contato) fields.push("E-mail de Contato");
       }
 
       setMissingFields(fields);
-      if (
-        fields.length > 0 &&
-        (user.tipo === "clinica" || user.tipo === "veterinario")
-      ) {
+      if (fields.length > 0 && ["clinica", "veterinario", "tutor"].includes(user.tipo)) {
         setTimeout(() => {
           setShowProfilePrompt(true);
         }, 3000);
@@ -110,15 +119,6 @@ export default function Dashboard() {
     };
     checkProfileCompletion(user);
   }, [user, loading]);
-
-  useEffect(() => {
-    if (!user) return;
-    let channel: any;
-    return () => {
-      if (channel) {
-      }
-    };
-  }, [user]);
 
   function handleLogout() {
     clearTokenFallback();
@@ -130,26 +130,32 @@ export default function Dashboard() {
   if (error) return <p className="p-6 text-center text-red-500">{error}</p>;
   if (!user) return null;
 
-  const initialActiveSection = location.state?.activeSection || "home";
+  const initialActiveSection = (location.state?.activeSection || "home") as DashboardSection;
 
   return (
     <>
       <ProfileCompletionPrompt
         isOpen={showProfilePrompt}
         onClose={() => setShowProfilePrompt(false)}
-        tipo={user.tipo as "clinica" | "veterinario"}
+        tipo={user.tipo as "clinica" | "veterinario" | "tutor"}
         missingFields={missingFields}
       />
       {(() => {
         switch (user.tipo) {
           case "tutor":
-            return <TutorDashboard user={user} onLogout={handleLogout} />;
+            return (
+              <TutorDashboard
+                user={user}
+                onLogout={handleLogout}
+                initialSection={initialActiveSection as TutorSection}
+              />
+            );
           case "veterinario":
             return (
               <VeterinarioDashboard
                 user={user}
                 onLogout={handleLogout}
-                initialSection={initialActiveSection as any}
+                initialSection={initialActiveSection as VetSection}
               />
             );
           case "clinica":
@@ -157,7 +163,7 @@ export default function Dashboard() {
               <ClinicaDashboard
                 user={user}
                 onLogout={handleLogout}
-                initialSection={initialActiveSection as any}
+                initialSection={initialActiveSection as ClinicaSection}
               />
             );
           case "admin":
@@ -165,7 +171,6 @@ export default function Dashboard() {
               <AdminDashboard
                 user={user}
                 onLogout={handleLogout}
-                initialSection={initialActiveSection as any} 
               />
             );
           default:

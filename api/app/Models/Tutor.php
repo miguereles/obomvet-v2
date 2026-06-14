@@ -21,12 +21,14 @@ class Tutor extends Model
         'nome_completo',
         'telefone_principal',
         'email_contato',
+        'telefone_alternativo',
         'endereco_id',
         'cpf',
+        'foto_url',
         'foto_perfil_path',
+        'descricao',
         'preferencias_contato',
         'informacoes_adicionais',
-        // Tokens para edição anónima
         'anonymous_edit_token',
         'anonymous_edit_token_expires_at',
     ];

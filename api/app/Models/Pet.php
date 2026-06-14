@@ -18,6 +18,8 @@ class Pet extends Model
         'alergias',
         'medicamentos_continuos',
         'cuidados_especiais',
+        'sexo',
+        'castrado',
         'tutor_id',
     ];
 

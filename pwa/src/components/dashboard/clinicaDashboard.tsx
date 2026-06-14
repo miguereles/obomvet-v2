@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Home, Activity, Users, Settings, Building } from "lucide-react"; // Adicionado Building
+import React, { useState, useEffect } from "react";
+import { Home, Activity, Users, Building } from "lucide-react"; // Adicionado Building
+import { Usuario } from "../../services/types";
 import { motion, AnimatePresence } from "framer-motion";
 import DashboardLayout from "./layout/DashboardLayout";
 import EmergenciasClinica from "./emergenciaClinica";
@@ -10,25 +10,36 @@ import MinhaClinica from "./minhaClinica"; // NOVO: Importe o componente
 // Define os tipos de seções possíveis no dashboard da clínica
 type ClinicaSection = "home" | "emergencias" | "veterinarios" | "minha_clinica"; // Alterado de 'configuracoes'
 
-export default function ClinicaDashboard({ user, onLogout }: any) {
-  const navigate = useNavigate();
-  const [activeSection, setActiveSection] = useState<ClinicaSection>("home");
+interface ClinicaDashboardProps {
+  user: Usuario | null;
+  onLogout: () => void;
+  initialSection?: ClinicaSection;
+}
 
-  const sidebar = (
-    <div className="flex flex-col gap-2"> {/* Reduz gap */}
-      <button
-        onClick={() => setActiveSection("home")}
-        className={`sidebar-button ${activeSection === "home" ? "sidebar-button-active" : "sidebar-button-inactive"}`}
-      >
-        <Home size={18} /> Início
-      </button>
+export default function ClinicaDashboard({ user, onLogout, initialSection = "home" }: ClinicaDashboardProps) {
+  const [activeSection, setActiveSection] = useState<ClinicaSection>(initialSection);
 
-      <button
-        onClick={() => setActiveSection("emergencias")}
-        className={`sidebar-button ${activeSection === "emergencias" ? "sidebar-button-active" : "sidebar-button-inactive"}`}
-      >
-        <Activity size={18} /> Emergências
-      </button>
+  useEffect(() => {
+    if (initialSection && initialSection !== activeSection) {
+      setActiveSection(initialSection);
+    }
+  }, [initialSection, activeSection]);
+
+  const sidebar = (
+    <div className="flex flex-col gap-2">
+      <button
+        onClick={() => setActiveSection("home")}
+        className={`sidebar-button ${activeSection === "home" ? "sidebar-button-active" : "sidebar-button-inactive"}`}
+      >
+        <Home size={18} /> Início
+      </button>
+
+      <button
+        onClick={() => setActiveSection("emergencias")}
+        className={`sidebar-button ${activeSection === "emergencias" ? "sidebar-button-active" : "sidebar-button-inactive"}`}
+      >
+        <Activity size={18} /> Emergências
+      </button>
 
       <button
         onClick={() => setActiveSection("veterinarios")}
@@ -36,14 +47,14 @@ export default function ClinicaDashboard({ user, onLogout }: any) {
       >
         <Users size={18} /> Veterinários
       </button>
-      
+
       {/* NOVO: Minha Clínica */}
       <button
-        onClick={() => setActiveSection("minha_clinica")}
-        className={`sidebar-button ${activeSection === "minha_clinica" ? "sidebar-button-active" : "sidebar-button-inactive"}`}
-      >
-        <Building size={18} /> Minha Clínica
-      </button>
+        onClick={() => setActiveSection("minha_clinica")}
+        className={`sidebar-button ${activeSection === "minha_clinica" ? "sidebar-button-active" : "sidebar-button-inactive"}`}
+      >
+        <Building size={18} /> Minha Clínica
+      </button>
 
       {/* Estilos Sidebar Buttons (mantidos) */}
       <style>{`
@@ -53,8 +64,8 @@ export default function ClinicaDashboard({ user, onLogout }: any) {
         .sidebar-button-inactive:hover:not(:disabled) { background-color: #F3F4F6; color: #1F2937; }
         .sidebar-button:disabled { color: #9CA3AF; }
       `}</style>
-    </div>
-  );
+    </div>
+  );
 
   const motionProps = {
     initial: { opacity: 0, y: 15 },
@@ -87,25 +98,13 @@ export default function ClinicaDashboard({ user, onLogout }: any) {
               <GerenciarVeterinarios />
             </motion.div>
           )}
-          
-          {/* NOVO: Seção Minha Clínica */}
+
           {activeSection === "minha_clinica" && (
             <motion.div key="minha-clinica-section" {...motionProps}>
               <MinhaClinica />
             </motion.div>
           )}
-
         </AnimatePresence>
-
-        <div className="mt-8 pt-6 border-t border-gray-200">
-           <button
-             onClick={onLogout}
-             className="text-sm text-red-600 hover:text-red-800 hover:underline font-medium"
-           >
-             Terminar Sessão
-           </button>
-        </div>
-
       </div>
     </DashboardLayout>
   );

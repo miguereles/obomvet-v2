@@ -1,3 +1,18 @@
+/* Seu arquivo CSS Global (ex: index.css) */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* * 💡 Nota: Use um caminho relativo ou absoluto dependendo da sua estrutura de build.
+ * Se o arquivo .otf for copiado para 'dist/fonts' durante o build, ajuste o 'url'
+ * para começar da raiz pública (ex: url('/fonts/kamber-black.otf')).
+ */
+@font-face {
+  font-family: 'KamberLogo'; /* Nome que será usado no Tailwind */
+  src: url('./fonts/kamber-black.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap; 
+}
+
+/* O restante do seu CSS pode vir aqui */

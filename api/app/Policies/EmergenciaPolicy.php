@@ -14,9 +14,9 @@ class EmergenciaPolicy
     /**
      * Determine whether the user can view any models.
      */
-    public function viewAny(Usuario $user, Emergencia $emergencia): bool
+    public function viewAny(Usuario $user): bool
     {
-        return $user->tipo === 'veterinario' || ($user->tipo === 'tutor' && $emergencia->tutor_id === $user->tutor->cd_tutor);
+        return in_array($user->tipo, ['tutor', 'veterinario', 'clinica', 'admin']);
     }
 
     /**
@@ -40,7 +40,23 @@ class EmergenciaPolicy
      */
     public function update(Usuario $user, Emergencia $emergencia): bool
     {
-        return $user->tipo === 'tutor' && $emergencia->tutor_id === $user->tutor->id || $user->tipo === 'veterinario' && $emergencia->cd_veterinario === $user->veterinario->id && $emergencia->cd_clinica === $user->clinica->id;
+        if ($user->tipo === 'admin') {
+            return true;
+        }
+        
+        if ($user->tipo === 'tutor' && $user->tutor) {
+            return $emergencia->tutor_id === $user->tutor->id;
+        }
+        
+        if ($user->tipo === 'veterinario' && $user->veterinario) {
+            return $emergencia->veterinario_id === $user->veterinario->id;
+        }
+        
+        if ($user->tipo === 'clinica' && $user->clinica) {
+            return $emergencia->clinica_id === $user->clinica->id;
+        }
+        
+        return false;
     }
 
     /**

@@ -3,8 +3,8 @@ import { Plus, Edit2, Trash2, Check, Loader2 } from "lucide-react";
 
 // 1. Importe os services e os tipos!
 import ClinicaService from "../../services/ClinicaService";
-import VeterinarioService, { CreateVetDto } from "../../services/VeterinarioService";
-import { Veterinario } from "../../services/types"; // Use seu tipo central
+import VeterinarioService from "../../services/VeterinarioService";
+import { Veterinario, CreateVetDto } from "../../services/types"; // Use seu tipo central
 
 // 2. Remova a interface duplicada
 // interface Veterinario { ... } // (Removida, usamos a de types.ts)
@@ -130,8 +130,8 @@ export default function GerenciarVeterinarios() {
       }
 
       resetForm();
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.message || err.message || "Erro ao salvar veterinário";
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err) || "Erro ao salvar veterinário";
       setError(errorMsg);
       console.error(err);
     } finally {
@@ -152,8 +152,9 @@ export default function GerenciarVeterinarios() {
       // 7. Use o Service!
       await VeterinarioService.delete(id);
       setVeterinarios((vets) => vets.filter((v) => v.id !== id));
-    } catch (err: any) {
-      setError(err.response?.data?.message || "Erro ao excluir veterinário");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message || "Erro ao excluir veterinário");
     } finally {
       setLoading(false);
     }
@@ -168,8 +169,8 @@ export default function GerenciarVeterinarios() {
       crmv: vet.crmv,
       especialidade: vet.especialidade || "",
       disponivel_24h: vet.disponivel_24h,
-      telefone_principal: (vet as any).telefone_principal || vet.telefone_emergencia || "", // (Ajuste de tipo)
-      email: (vet as any).email || "", // (O model Veterinario não tem email, mas o Usuario sim)
+      telefone_principal: vet.telefone_principal || vet.telefone_emergencia || "",
+      email: vet.email || "",
       password: "",
     });
     setEditingId(vet.id);
@@ -402,8 +403,7 @@ export default function GerenciarVeterinarios() {
         </div>
       ) : (
         <p className="text-center py-8 text-gray-500">
-          Nenhum veterinário cadastrado. Clique em "Adicionar Veterinário"
-          para começar.
+          Nenhum veterinário cadastrado. Clique em Adicionar Veterinário para começar.
         </p>
       )}
     </div>

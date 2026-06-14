@@ -1,14 +1,13 @@
 import { ReactNode } from "react";
 import DashboardTopbar from "./DashboardTopbar";
 import DashboardSidebar from "./DashboardSidebar";
-// Importa o tipo 'Usuario' que agora é necessário
 import { Usuario } from "../../../services/types";
 
 interface DashboardLayoutProps {
   sidebar: ReactNode;
   children: ReactNode;
-  user: Usuario | null; // ✅ Prop 'user' adicionada
-  onLogout: () => void; // ✅ Prop 'onLogout' adicionada
+  user: Usuario | null;
+  onLogout: () => void;
 }
 
 export default function DashboardLayout({
@@ -18,12 +17,25 @@ export default function DashboardLayout({
   onLogout,
 }: DashboardLayoutProps) {
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
-      {/* ✅ Props passadas para a Topbar */}
-      <DashboardTopbar user={user} onLogout={onLogout} />
-      <div className="flex flex-1 overflow-hidden"> {/* Adicionado overflow-hidden */}
+    // 'h-screen' garante que a página não role (apenas o conteúdo interno rola)
+    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+      
+      {/* Topbar: 'flex-none' impede que ela encolha ou estique */}
+      <div className="flex-none z-20 shadow-sm relative bg-white">
+        <DashboardTopbar user={user} onLogout={onLogout} />
+      </div>
+
+      {/* Container Inferior: Sidebar + Main */}
+      <div className="flex flex-1 overflow-hidden">
+        
+        {/* Sidebar: Já tem h-full internamente para ocupar este espaço */}
         <DashboardSidebar>{sidebar}</DashboardSidebar>
-        <main className="flex-1 p-6 overflow-y-auto">{children}</main>
+        
+        {/* Main: Onde o conteúdo da página rola */}
+        <main className="flex-1 p-4 md:p-6 overflow-y-auto scroll-smooth">
+          {children}
+        </main>
+
       </div>
     </div>
   );

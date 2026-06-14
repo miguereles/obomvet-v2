@@ -171,7 +171,6 @@ export default function AdminManageUsers() {
 
       {/* Modal de Edição */}
       {isEditModalOpen && selectedUsuario && (
-      // ... (Omitido por brevidade, código idêntico ao anterior) ...
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <form onSubmit={handleUpdateUsuario} className="bg-white rounded-lg shadow-xl w-full max-w-lg">
             <div className="p-4 border-b flex justify-between items-center">
@@ -223,7 +222,6 @@ export default function AdminManageUsers() {
 
       {/* Modal de Exclusão */}
       {isDeleteModalOpen && selectedUsuario && (
-      // ... (Omitido por brevidade, código idêntico ao anterior) ...
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
             <div className="p-6 text-center">

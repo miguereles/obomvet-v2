@@ -105,16 +105,23 @@ export default function DashboardTopbar({ user, onLogout }: TopbarProps) {
       </button>
 
       {/* Logo */}
-      <Link
-        to="/"
-        className="flex items-center gap-2 absolute left-1/2 -translate-x-1/2"
-        aria-label="Página Inicial oBomVet"
-      >
-        <PawPrint className="w-8 h-8 text-[#004E64]" />
-        <span className="text-2xl font-extrabold text-[#004E64] hidden sm:block">
-          oBomVet
+      <Link to="/" className="flex items-center gap-2"> 
+        
+        <img 
+          src="/icons/icon-192x192_2.png" 
+          alt="Logo oBomVet" 
+          // ✅ 1. CORREÇÃO ESSENCIAL: Usar 'align-middle' em elementos inline
+          className="w-14 h-14 align-middle" 
+        />
+
+        <span 
+          // ✅ CORREÇÃO CHAVE: Mover o texto 2px para baixo (translate-y-0.5)
+          // Opcional: Adicionar 'relative' se o span não for um container de transformação
+          className="text-4xl font-extrabold text-[#004E64] hidden  sm:inline-block font-logo align-middle translate-y-1 relative"
+        >
+            oBomVet
         </span>
-      </Link>
+      </Link>
 
       {/* Menu do Utilizador (Novo) */}
       <div className="relative" ref={menuRef}>

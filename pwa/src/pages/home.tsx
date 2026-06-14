@@ -1,8 +1,8 @@
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 // ✅ CORREÇÃO: Revertendo para caminhos relativos COM extensão
-import Navbar from "../components/Navbar.tsx";
-import InstallPwaCard from "../components/InstallPwaCard.tsx";
+import Navbar from "../components/Navbar";
+import InstallPwaCard from "../components/InstallPwaCard";
 import {
   AlertTriangle,
   MapPin,
@@ -21,17 +21,15 @@ import {
 } from "lucide-react";
 import { useState, useEffect, ReactNode } from "react";
 // ✅ CORREÇÃO: Revertendo para caminhos relativos COM extensão
-import { getUser } from "../utils/auth.ts";
-import { Usuario, Emergencia } from "../services/types.ts";
-import EmergenciaService from "../services/EmergenciaService.ts";
-import { useDarkMode } from "../accessibility/DarkModeContext.tsx";
+import { getUser } from "../utils/auth";
+import { Usuario, Emergencia } from "../services/types";
+import EmergenciaService from "../services/EmergenciaService";
+import { isEmergencyActive } from "../utils/emergencyStatus";
+import { useDarkMode } from "../accessibility/DarkModeContext";
 
 export default function Home() {
   const { darkMode } = useDarkMode();
-  const [user, setUser] = useState<Pick<
-    Usuario,
-    "id" | "name" | "email" | "tipo"
-  > | null>(getUser());
+  const [user, setUser] = useState(getUser());
   const navigate = useNavigate();
 
   const [activeEmergency, setActiveEmergency] = useState<Emergencia | null>(
@@ -60,18 +58,9 @@ export default function Home() {
           const minhasEmergencias =
             await EmergenciaService.getMinhasEmergencias();
 
-          // 2. Define quais status são considerados "ativos" (com "pendente")
-          const activeStatus: Emergencia["status"][] = [
-            "aberta",
-            "assigned",
-            "accepted",
-            "em_atendimento",
-            "pendente",
-          ];
-
-          // 3. Encontra a primeira emergência que esteja ativa
+          // 2. Encontra a primeira emergência ativa usando a regra compartilhada
           const firstActive = minhasEmergencias.find((em) =>
-            activeStatus.includes(em.status)
+            isEmergencyActive(em.status)
           );
 
           // 4. Se encontrou uma emergência ativa...
@@ -122,15 +111,7 @@ export default function Home() {
 
             const { emergencia: emgData } = await EmergenciaService.getPublicByUuid(publicUuid);
 
-            const activeStatus: Emergencia["status"][] = [
-              "aberta",
-              "assigned",
-              "accepted",
-              "em_atendimento",
-              "pendente",
-            ];
-
-            if (activeStatus.includes(emgData.status)) {
+            if (isEmergencyActive(emgData.status)) {
               const petName = localStorage.getItem("anonymousEmergencyPetName");
               emgData.pet = { nome: petName || "seu pet" };
               setActiveEmergency(emgData);
@@ -173,6 +154,7 @@ export default function Home() {
 
   const renderHomeContent = (): ReactNode => {
     const userType = user?.tipo;
+    const userName = user?.name ?? "";
     const titleProps = {
       initial: { opacity: 0, y: 10 },
       animate: { opacity: 1, y: 0 },
@@ -206,7 +188,7 @@ export default function Home() {
               className={titleClass + " flex items-center gap-3"}
               {...titleProps}
             >
-              <Building size={40} /> Bem-vinda, Clínica {user.name}!
+              <Building size={40} /> Bem-vinda, Clínica {userName}!
             </motion.h1>
             <motion.p className={subtitleClass} {...p1Props}>
               Prontos para gerenciar seus atendimentos?
@@ -225,7 +207,7 @@ export default function Home() {
               className={titleClass + " flex items-center gap-3"}
               {...titleProps}
             >
-              <Stethoscope size={40} /> Olá, Dr(a). {user.name}!
+              <Stethoscope size={40} /> Olá, Dr(a). {userName}!
             </motion.h1>
             <motion.p className={subtitleClass} {...p1Props}>
               Pronto(a) para o seu plantão?
@@ -683,59 +665,8 @@ export default function Home() {
       {/* Card de instalação PWA */}
       <InstallPwaCard />
 
-      {/* POP-UP DE EMERGÊNCIA ATIVA */}
-      <AnimatePresence>
-        {!isCheckingEmergency && activeEmergency && (
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="popup-title"
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] w-full max-w-sm sm:max-w-md p-4"
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            transition={{ type: "spring", stiffness: 300, damping: 20 }}
-          >
-            <div className="bg-white rounded-xl shadow-2xl border-2 border-red-500 p-4 sm:p-5 flex items-center gap-4">
-              <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-red-100 rounded-full flex items-center justify-center">
-                <Siren
-                  className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 animate-pulse"
-                  aria-hidden="true"
-                />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3
-                  id="popup-title"
-                  className="font-bold text-base sm:text-lg text-gray-800 truncate"
-                >
-                  Emergência Ativa!
-                </h3>
-                <p className="text-sm text-gray-600 truncate">
-                  Atendimento para {activeEmergency.pet?.nome || "o seu pet"}{" "}
-                  está em progresso.
-                </p>
-              </div>
-              <button
-                onClick={() => navigate(`/emergencia/${activeEmergency.id}`)}
-                className="flex-shrink-0 bg-red-600 text-white p-2 rounded-lg hover:bg-red-700 transition"
-                title="Acompanhar"
-                aria-label="Acompanhar emergência ativa"
-              >
-                <ArrowRight className="w-5 h-5 sm:w-6 sm:h-6" />
-              </button>
-              <button
-                onClick={() => setActiveEmergency(null)}
-                className="absolute -top-2 -right-2 w-7 h-7 bg-gray-200 text-gray-700 rounded-full flex items-center justify-center border-2 border-white hover:bg-gray-300"
-                title="Fechar"
-                aria-label="Fechar pop-up de emergência ativa"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      {/* --- Fim do Pop-up --- */}
+      
+      
 
       <footer
         className={`w-full text-center py-4 text-xs shadow-inner transition-colors duration-300 ${

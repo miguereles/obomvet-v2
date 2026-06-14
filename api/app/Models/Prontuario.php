@@ -50,8 +50,6 @@ class Prontuario extends Model
     public function anexos()
     {
         return $this->morphMany(Anexo::class, 'anexable');
-    {
-        return $this->morphMany(Anexo::class, 'anexable');
     }
 }
 }

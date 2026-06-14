@@ -39,7 +39,7 @@ export default function About() {
           <p className="text-lg md:text-2xl text-gray-700 leading-relaxed">
             Acreditamos que tecnologia e empatia podem andar juntas. Com o{" "}
             <strong className="text-[#25A18E]">oBomVet</strong>, tutores podem localizar a clínica mais próxima,
-            registrar emergências e receber atendimento com agilidade — tudo em poucos cliques.
+            registrar emergências e receber atendimento com agilidade, tudo em poucos cliques.
           </p>
 
           <p className="text-lg md:text-2xl text-gray-700 leading-relaxed">
@@ -85,15 +85,7 @@ export default function About() {
           </div>
         </motion.div>
 
-        {/* Imagem ilustrativa */}
-        <motion.img
-          src="/icons/about-us.svg"
-          alt="Equipe de estudantes e veterinários"
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.8, delay: 0.3 }}
-          className="w-80 md:w-[400px] h-auto drop-shadow-lg hover:scale-105 transition-transform duration-500"
-        />
+        
       </main>
 
       {/* Rodapé */}

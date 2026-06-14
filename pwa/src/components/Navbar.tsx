@@ -64,11 +64,24 @@ export default function Navbar() {
   return (
     <nav className="fixed w-full top-0 left-0 z-30 bg-white/95 backdrop-blur-md shadow-md px-8 md:px-12 py-4 flex items-center justify-between">
       {/* Logo */}
-      <Link to="/" className="flex items-center gap-3">
-        <PawPrint className="text-[#004E64] w-9 h-9" />
-        <span className="text-3xl font-extrabold text-[#004E64]">oBomVet</span>
-      </Link>
+      {/* Logo Container com flex items-center */}
+      <Link to="/" className="flex items-center gap-2"> 
+        
+        <img 
+          src="/icons/icon-192x192.png" 
+          alt="Logo oBomVet" 
+          // ✅ 1. CORREÇÃO ESSENCIAL: Usar 'align-middle' em elementos inline
+          className="w-14 h-14 align-middle" 
+        />
 
+        <span 
+          // ✅ CORREÇÃO CHAVE: Mover o texto 2px para baixo (translate-y-0.5)
+          // Opcional: Adicionar 'relative' se o span não for um container de transformação
+          className="text-4xl font-extrabold text-[#004E64]  sm:inline-block font-logo align-middle translate-y-1 relative"
+        >
+            oBomVet
+        </span>
+      </Link>
       {/* Menu Desktop */}
       <div className="hidden md:flex items-center gap-4 text-lg">
         {navLinks.map(({ label, path }) => (

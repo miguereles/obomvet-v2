@@ -1,9 +1,11 @@
 {
   "name": "Obomvet PWA",
   "short_name": "Obomvet",
-  "start_url": ".",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
+  "theme_color": "#00a8ff",
   "description": "Obomvet Progressive Web App",
   "icons": [
     {

@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 interface PromptProps {
   isOpen: boolean;
   onClose: () => void;
-  tipo: 'clinica' | 'veterinario';
+  tipo: 'clinica' | 'veterinario' | 'tutor';
   missingFields: string[];
 }
 
@@ -14,9 +14,13 @@ export default function ProfileCompletionPrompt({ isOpen, onClose, tipo, missing
 
   const handleGoToProfile = () => {
     onClose();
-    // Navega para a seção correta no Dashboard, usando o state para forçar a mudança de seção
-    const section = tipo === 'clinica' ? 'minha_clinica' : 'meu_perfil';
-    navigate('/dashboard', { state: { activeSection: section } }); 
+    const section =
+      tipo === 'clinica'
+        ? 'minha_clinica'
+        : tipo === 'veterinario'
+        ? 'meu_perfil'
+        : 'perfil';
+    navigate('/dashboard', { state: { activeSection: section } });
   };
 
   if (!isOpen) return null;

@@ -15,7 +15,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   </React.StrictMode>
 );
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js')
-    .then(() => console.log('Service Worker registrado!'))
-    .catch((err) => console.error('Erro ao registrar SW:', err));
+  navigator.serviceWorker.register('/sw.js').catch(() => {
+    // Falha silenciosa ao registrar o Service Worker em navegadores que não suportam.
+  });
 }

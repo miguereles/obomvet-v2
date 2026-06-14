@@ -22,7 +22,6 @@ interface LinkItemProps {
   children: React.ReactNode;
 }
 const LinkItem = ({ href, icon: Icon, children }: LinkItemProps) => {
-// ... (Omitido por brevidade, código idêntico ao anterior) ...
   const location = useLocation();
   const currentView = new URLSearchParams(location.search).get('view');
   const linkView = href.includes('view=') ? href.split('view=')[1] : 'overview';
@@ -45,7 +44,6 @@ const LinkItem = ({ href, icon: Icon, children }: LinkItemProps) => {
 
 // --- Componentes de "View" (Placeholders restantes) ---
 const AdminOverview = () => (
-// ... (Omitido por brevidade, código idêntico ao anterior) ...
   <div className="bg-white p-6 rounded-lg shadow">
     <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
       <LayoutGrid size={20} />
@@ -56,7 +54,6 @@ const AdminOverview = () => (
 );
 
 const AdminConfig = () => (
-// ... (Omitido por brevidade, código idêntico ao anterior) ...
   <div className="bg-white p-6 rounded-lg shadow">
     <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
       <SlidersHorizontal size={20} />
